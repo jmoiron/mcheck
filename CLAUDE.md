@@ -1,6 +1,6 @@
 The vanilla-mcdoc directory contains a nested set of schemas for Minecraft datapack objects in the "mcdoc" format, specified https://spyglassmc.com/user/mcdoc/specification.html
 
-These schemas correspond to the requirements for json files in Minecraft datapacks, and have version info in them such as `#[until="1.19.1"]` which means that a particular atribute or feature is only valid for versions 1.19.1 and earlier.
+These schemas apply to json files in Minecraft datapacks, and have version info in them such as `#[until="1.19.1"]` which means that a particular atribute or feature is only valid for versions 1.19.1 and earlier.
 
 I want you to create a command line tool in Go that is capable of checking a json file against a given schema. The tool should:
 

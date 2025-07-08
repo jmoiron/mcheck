@@ -35,25 +35,28 @@ func (v Version) Compare(other Version) int {
 
 func parseVersion(s string) (Version, error) {
 	parts := strings.Split(s, ".")
-	if len(parts) != 3 {
+	if len(parts) < 2 || len(parts) > 3 {
 		return Version{}, fmt.Errorf("invalid version format: %s", s)
 	}
-	
+
 	major, err := strconv.Atoi(parts[0])
 	if err != nil {
 		return Version{}, fmt.Errorf("invalid major version: %s", parts[0])
 	}
-	
+
 	minor, err := strconv.Atoi(parts[1])
 	if err != nil {
 		return Version{}, fmt.Errorf("invalid minor version: %s", parts[1])
 	}
-	
-	patch, err := strconv.Atoi(parts[2])
-	if err != nil {
-		return Version{}, fmt.Errorf("invalid patch version: %s", parts[2])
+
+	patch := 0
+	if len(parts) == 3 {
+		patch, err = strconv.Atoi(parts[2])
+		if err != nil {
+			return Version{}, fmt.Errorf("invalid patch version: %s", parts[2])
+		}
 	}
-	
+
 	return Version{Major: major, Minor: minor, Patch: patch}, nil
 }
 
@@ -131,7 +134,7 @@ func (p *MCDocParser) determineSchemaPath(jsonPath string) (string, error) {
 
 	// If the first part looks like a namespace (not a known type), skip it
 	knownTypes := []string{"worldgen", "advancement", "recipe", "loot_table", "structure", "dimension", "dimension_type", "biome", "configured_carver", "configured_feature", "placed_feature", "processor_list", "template_pool", "structure_set", "noise_settings", "density_function", "multi_noise_biome_source_parameter_list", "chat_type", "damage_type", "trim_pattern", "trim_material", "wolf_variant", "painting_variant", "jukebox_song", "banner_pattern", "enchantment", "item_modifier", "predicate", "tag", "function", "gametest"}
-	
+
 	if len(typePath) > 1 {
 		firstPart := typePath[0]
 		isKnownType := false
@@ -200,12 +203,11 @@ func (p *MCDocParser) parseSchemaContent(schema *MCDocSchema) error {
 	content := schema.Content
 	lines := strings.Split(content, "\n")
 
-	// Find the main dispatch structure
+	// Find the main dispatch structure and parse it precisely
 	var mainStruct *MCDocStruct
-	var currentStruct *MCDocStruct
-	var currentEnum *MCDocEnum
-	var braceLevel int
-	
+	var inMainStruct bool
+	var nestedBraceLevel int // Track additional nesting within the main struct
+
 	i := 0
 	for i < len(lines) {
 		line := strings.TrimSpace(lines[i])
@@ -215,7 +217,8 @@ func (p *MCDocParser) parseSchemaContent(schema *MCDocSchema) error {
 		}
 
 		// Count braces to track nesting
-		braceLevel += strings.Count(line, "{") - strings.Count(line, "}")
+		openBraces := strings.Count(line, "{")
+		closeBraces := strings.Count(line, "}")
 
 		// Parse dispatch (main structure)
 		if strings.Contains(line, "dispatch") && strings.Contains(line, "to struct") {
@@ -226,31 +229,113 @@ func (p *MCDocParser) parseSchemaContent(schema *MCDocSchema) error {
 					Fields: make(map[string]*MCDocField),
 				}
 				schema.Structs[structName] = mainStruct
-				currentStruct = mainStruct
+				// If the line contains {, we're already in the struct
+				if openBraces > 0 {
+					inMainStruct = true
+					nestedBraceLevel = 0
+				}
 				i++
 				continue
 			}
 		}
 
-		// Parse struct definition
+		// If we haven't found the opening brace yet for dispatch, look for it
+		if mainStruct != nil && !inMainStruct && openBraces > 0 {
+			inMainStruct = true
+			nestedBraceLevel = 0
+		}
+
+		// Parse struct fields - only when we're at the top level of the main struct (nestedBraceLevel = 0)
+		// Check this BEFORE updating brace levels since the field definition line itself might have braces
+		isTopLevelField := mainStruct != nil && inMainStruct && nestedBraceLevel == 0 && strings.Contains(line, ":") && !strings.Contains(line, "dispatch")
+
+		// Update nested brace level when we're in the main struct (after checking for field parsing)
+		if inMainStruct {
+			nestedBraceLevel += openBraces - closeBraces
+		}
+
+		if isTopLevelField {
+			// Check if this is a field definition by looking at the line pattern
+			if p.isValidFieldLine(line) {
+				field := p.parseField(line)
+				if field != nil {
+					// Check previous lines for version annotations
+					field.VersionSince, field.VersionUntil = p.extractVersionFromContext(lines, i)
+					field.IsAvailable = p.isFieldAvailableWithConstraints(field.VersionSince, field.VersionUntil)
+					mainStruct.Fields[field.Name] = field
+				}
+			}
+		}
+
+		// End of main struct
+		if inMainStruct && nestedBraceLevel < 0 {
+			inMainStruct = false
+		}
+
+		i++
+	}
+
+	// Parse other struct and enum definitions
+	p.parseOtherStructsAndEnums(schema, content)
+
+	// Copy main struct fields to schema fields for backward compatibility
+	if mainStruct != nil {
+		for name, field := range mainStruct.Fields {
+			schema.Fields[name] = field
+		}
+	}
+
+	return nil
+}
+
+func (p *MCDocParser) isValidFieldLine(line string) bool {
+	// Remove version annotations for analysis
+	cleanLine := regexp.MustCompile(`#\[[^\]]+\]`).ReplaceAllString(line, "")
+	cleanLine = strings.TrimSpace(cleanLine)
+
+	// Skip lines that don't contain proper field definitions
+	if !strings.Contains(cleanLine, ":") {
+		return false
+	}
+
+	// Skip lines that start with [ (these are type definitions inside structs)
+	if strings.HasPrefix(cleanLine, "[") {
+		return false
+	}
+
+	// Skip lines that are complex type definitions
+	if strings.Contains(cleanLine, "|") {
+		return false
+	}
+
+	return true
+}
+
+func (p *MCDocParser) parseOtherStructsAndEnums(schema *MCDocSchema, content string) {
+	lines := strings.Split(content, "\n")
+	var currentStruct *MCDocStruct
+	var currentEnum *MCDocEnum
+
+	for i := 0; i < len(lines); i++ {
+		line := strings.TrimSpace(lines[i])
+		if line == "" || strings.HasPrefix(line, "//") || strings.HasPrefix(line, "///") {
+			continue
+		}
+
+		// Parse standalone struct definitions
 		if strings.HasPrefix(line, "struct ") {
 			structName := p.extractStructName(line)
 			if structName != "" {
-				newStruct := &MCDocStruct{
+				currentStruct = &MCDocStruct{
 					Name:   structName,
 					Fields: make(map[string]*MCDocField),
 				}
-				schema.Structs[structName] = newStruct
-				// Only switch context if this is a top-level struct
-				if braceLevel <= 1 {
-					currentStruct = newStruct
-				}
-				i++
+				schema.Structs[structName] = currentStruct
 				continue
 			}
 		}
 
-		// Parse enum definition
+		// Parse enum definitions
 		if strings.HasPrefix(line, "enum") {
 			enumName := p.extractEnumName(line)
 			if enumName != "" {
@@ -259,17 +344,7 @@ func (p *MCDocParser) parseSchemaContent(schema *MCDocSchema) error {
 					Values: make(map[string]string),
 				}
 				schema.Enums[enumName] = currentEnum
-				i++
 				continue
-			}
-		}
-
-		// Parse struct fields
-		if currentStruct != nil && strings.Contains(line, ":") && !strings.Contains(line, "dispatch") {
-			field := p.parseField(line)
-			if field != nil {
-				field.IsAvailable = p.isFieldAvailable(line)
-				currentStruct.Fields[field.Name] = field
 			}
 		}
 
@@ -286,19 +361,11 @@ func (p *MCDocParser) parseSchemaContent(schema *MCDocSchema) error {
 			if currentEnum != nil {
 				currentEnum = nil
 			}
-		}
-
-		i++
-	}
-
-	// Copy main struct fields to schema fields for backward compatibility
-	if mainStruct != nil {
-		for name, field := range mainStruct.Fields {
-			schema.Fields[name] = field
+			if currentStruct != nil {
+				currentStruct = nil
+			}
 		}
 	}
-
-	return nil
 }
 
 func (p *MCDocParser) extractStructName(line string) string {
@@ -323,42 +390,52 @@ func (p *MCDocParser) extractEnumName(line string) string {
 
 func (p *MCDocParser) parseField(line string) *MCDocField {
 	// Parse field definitions like "temperature: float" or "spawners: struct {"
-	
+
 	// Remove version annotations for parsing
 	cleanLine := regexp.MustCompile(`#\[[^\]]+\]`).ReplaceAllString(line, "")
 	cleanLine = strings.TrimSpace(cleanLine)
-	
+
 	if !strings.Contains(cleanLine, ":") {
 		return nil
 	}
-	
+
 	parts := strings.SplitN(cleanLine, ":", 2)
 	if len(parts) != 2 {
 		return nil
 	}
-	
+
 	fieldName := strings.TrimSpace(parts[0])
 	fieldType := strings.TrimSpace(parts[1])
-	
+
 	// Remove trailing comma
 	fieldType = strings.TrimSuffix(fieldType, ",")
-	
+
 	// Check if optional
 	optional := strings.HasSuffix(fieldName, "?")
 	if optional {
 		fieldName = strings.TrimSuffix(fieldName, "?")
 	}
-	
+
+	// Skip lines that start with /// (doc comments)
+	if strings.HasPrefix(strings.TrimSpace(line), "///") {
+		return nil
+	}
+
+	// Skip empty field names
+	if fieldName == "" {
+		return nil
+	}
+
 	field := &MCDocField{
 		Name:     fieldName,
 		Optional: optional,
 		Type:     p.parseType(fieldType),
 	}
-	
+
 	// Parse version constraints
 	field.VersionSince = p.extractVersionSince(line)
 	field.VersionUntil = p.extractVersionUntil(line)
-	
+
 	return field
 }
 
@@ -368,17 +445,17 @@ func (p *MCDocParser) parseEnumValue(line string) (string, string) {
 	if len(parts) != 2 {
 		return "", ""
 	}
-	
+
 	key := strings.TrimSpace(parts[0])
 	value := strings.TrimSpace(parts[1])
 	value = strings.Trim(value, `",`)
-	
+
 	return key, value
 }
 
 func (p *MCDocParser) parseType(typeStr string) MCDocType {
 	typeStr = strings.TrimSpace(typeStr)
-	
+
 	switch {
 	case typeStr == "string":
 		return MCDocTypeString
@@ -394,51 +471,113 @@ func (p *MCDocParser) parseType(typeStr string) MCDocType {
 		return MCDocTypeArray
 	case strings.HasPrefix(typeStr, "struct"):
 		return MCDocTypeStruct
+	case strings.Contains(typeStr, "{"):
+		return MCDocTypeStruct
+	case strings.HasPrefix(typeStr, "("):
+		// Handle complex union types like "([ConfiguredFeatureRef] | ...)"
+		return MCDocTypeArray // Treat complex types as arrays for now
 	default:
-		return MCDocTypeUnknown
+		// Handle complex types like BiomeCategory, BiomeEffects, etc.
+		// For now, treat them as struct types
+		return MCDocTypeStruct
 	}
 }
 
-func (p *MCDocParser) extractVersionSince(line string) *Version {
-	re := regexp.MustCompile(`#\[since="([^"]+)"\]`)
-	matches := re.FindStringSubmatch(line)
-	if len(matches) > 1 {
+type VersionRequirement struct {
+	Since *Version
+	Until *Version
+}
+
+// parseVersionRequirement determines if a line contains version requirements and extracts them
+func parseVersionRequirement(line string) *VersionRequirement {
+	req := &VersionRequirement{}
+
+	// Check for #[since="version"] pattern
+	sinceRe := regexp.MustCompile(`#\[since="([^"]+)"\]`)
+	if matches := sinceRe.FindStringSubmatch(line); len(matches) > 1 {
 		if version, err := parseVersion(matches[1]); err == nil {
-			return &version
+			req.Since = &version
 		}
+	}
+
+	// Check for #[until="version"] pattern
+	untilRe := regexp.MustCompile(`#\[until="([^"]+)"\]`)
+	if matches := untilRe.FindStringSubmatch(line); len(matches) > 1 {
+		if version, err := parseVersion(matches[1]); err == nil {
+			req.Until = &version
+		}
+	}
+
+	// Return nil if no version requirements found
+	if req.Since == nil && req.Until == nil {
+		return nil
+	}
+
+	return req
+}
+
+func (p *MCDocParser) extractVersionSince(line string) *Version {
+	req := parseVersionRequirement(line)
+	if req != nil {
+		return req.Since
 	}
 	return nil
 }
 
 func (p *MCDocParser) extractVersionUntil(line string) *Version {
-	re := regexp.MustCompile(`#\[until="([^"]+)"\]`)
-	matches := re.FindStringSubmatch(line)
-	if len(matches) > 1 {
-		if version, err := parseVersion(matches[1]); err == nil {
-			return &version
-		}
+	req := parseVersionRequirement(line)
+	if req != nil {
+		return req.Until
 	}
 	return nil
+}
+
+func (p *MCDocParser) extractVersionFromContext(lines []string, currentIndex int) (*Version, *Version) {
+	var sinceVersion *Version
+	var untilVersion *Version
+
+	// Check the current line and a few lines before for version annotations
+	for j := currentIndex; j >= 0 && j > currentIndex-3; j-- {
+		line := strings.TrimSpace(lines[j])
+
+		if since := p.extractVersionSince(line); since != nil {
+			sinceVersion = since
+		}
+		if until := p.extractVersionUntil(line); until != nil {
+			untilVersion = until
+		}
+
+		// Stop looking if we hit another field definition or structural element (but not doc comments)
+		if j < currentIndex && strings.Contains(line, ":") && !strings.HasPrefix(line, "///") {
+			break
+		}
+	}
+
+	return sinceVersion, untilVersion
+}
+
+func (p *MCDocParser) isFieldAvailableWithConstraints(sinceVersion *Version, untilVersion *Version) bool {
+	if sinceVersion != nil {
+		if p.targetVersion.Compare(*sinceVersion) < 0 {
+			return false
+		}
+	}
+
+	if untilVersion != nil {
+		if p.targetVersion.Compare(*untilVersion) > 0 {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (p *MCDocParser) isFieldAvailable(line string) bool {
 	// Extract version constraints from the line
 	sinceVersion := p.extractVersionSince(line)
 	untilVersion := p.extractVersionUntil(line)
-	
-	if sinceVersion != nil {
-		if p.targetVersion.Compare(*sinceVersion) < 0 {
-			return false
-		}
-	}
-	
-	if untilVersion != nil {
-		if p.targetVersion.Compare(*untilVersion) > 0 {
-			return false
-		}
-	}
-	
-	return true
+
+	return p.isFieldAvailableWithConstraints(sinceVersion, untilVersion)
 }
 
 func (p *MCDocParser) validateJSON(jsonPath string) error {
@@ -472,8 +611,8 @@ func (p *MCDocParser) validateJSON(jsonPath string) error {
 
 	// Perform comprehensive validation
 	fmt.Printf("Validating %s against schema %s for version %s\n", jsonPath, schemaPath, p.targetVersion.String())
-	
-	// Find the main struct for validation
+
+	// Find the main struct for validation (should be the dispatch target)
 	var mainStruct *MCDocStruct
 	for _, s := range schema.Structs {
 		if len(s.Fields) > 0 {
@@ -481,14 +620,14 @@ func (p *MCDocParser) validateJSON(jsonPath string) error {
 			break
 		}
 	}
-	
+
 	if mainStruct == nil {
 		return fmt.Errorf("no main struct found in schema")
 	}
-	
+
 	// Validate against the main struct
 	issues := p.validateStruct(jsonData, mainStruct, schema, "")
-	
+
 	if len(issues) > 0 {
 		fmt.Println("Validation issues found:")
 		for _, issue := range issues {
@@ -503,33 +642,33 @@ func (p *MCDocParser) validateJSON(jsonPath string) error {
 
 func (p *MCDocParser) validateStruct(jsonData map[string]interface{}, structDef *MCDocStruct, schema *MCDocSchema, path string) []string {
 	var issues []string
-	
+
 	// Check required fields
 	for fieldName, field := range structDef.Fields {
 		if !field.IsAvailable {
 			continue // Skip fields not available in this version
 		}
-		
+
 		fieldPath := path
 		if fieldPath != "" {
 			fieldPath += "."
 		}
 		fieldPath += fieldName
-		
+
 		jsonValue, exists := jsonData[fieldName]
-		
+
 		if !exists {
 			if !field.Optional {
 				issues = append(issues, fmt.Sprintf("Required field '%s' is missing", fieldPath))
 			}
 			continue
 		}
-		
+
 		// Validate field type and value
 		fieldIssues := p.validateField(jsonValue, field, schema, fieldPath)
 		issues = append(issues, fieldIssues...)
 	}
-	
+
 	// Check for unknown fields
 	for fieldName := range jsonData {
 		if _, exists := structDef.Fields[fieldName]; !exists {
@@ -541,13 +680,13 @@ func (p *MCDocParser) validateStruct(jsonData map[string]interface{}, structDef 
 			issues = append(issues, fmt.Sprintf("Unknown field '%s'", fieldPath))
 		}
 	}
-	
+
 	return issues
 }
 
 func (p *MCDocParser) validateField(jsonValue interface{}, field *MCDocField, schema *MCDocSchema, path string) []string {
 	var issues []string
-	
+
 	switch field.Type {
 	case MCDocTypeString:
 		if _, ok := jsonValue.(string); !ok {
@@ -600,7 +739,7 @@ func (p *MCDocParser) validateField(jsonValue interface{}, field *MCDocField, sc
 			issues = append(issues, fmt.Sprintf("Field '%s' should be an object, got %T", path, jsonValue))
 		}
 	}
-	
+
 	return issues
 }
 
@@ -609,7 +748,7 @@ func main() {
 		version   string
 		schemaDir string
 	)
-	
+
 	rootCmd := &cobra.Command{
 		Use:   "mcheck <json-file>",
 		Short: "Validate Minecraft datapack JSON files against mcdoc schemas",
@@ -618,13 +757,13 @@ mcdoc schemas with version-specific constraints.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			jsonPath := args[0]
-			
+
 			// Parse the target version
 			targetVersion, err := parseVersion(version)
 			if err != nil {
 				return fmt.Errorf("invalid version format: %w", err)
 			}
-			
+
 			// Find schema directory if not provided
 			if schemaDir == "" {
 				// Look for vanilla-mcdoc directory
@@ -634,16 +773,16 @@ mcdoc schemas with version-specific constraints.`,
 					return fmt.Errorf("schema directory not found, please specify with --schema-dir")
 				}
 			}
-			
+
 			// Create parser and validate
 			parser := NewMCDocParser(targetVersion, schemaDir)
 			return parser.validateJSON(jsonPath)
 		},
 	}
-	
+
 	rootCmd.Flags().StringVarP(&version, "version", "v", "1.20.1", "Target Minecraft version")
 	rootCmd.Flags().StringVarP(&schemaDir, "schema-dir", "s", "", "Path to vanilla-mcdoc directory")
-	
+
 	if err := rootCmd.Execute(); err != nil {
 		log.Fatal(err)
 	}
