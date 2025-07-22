@@ -432,6 +432,11 @@ func (p *MCDocParser) parseField(line string) *MCDocField {
 		Type:     p.parseType(fieldType),
 	}
 
+	// Debug for complex fields
+	if fieldName == "carvers" || fieldName == "features" {
+		fmt.Printf("DEBUG %s: fieldType='%s', parsedType=%d\n", fieldName, fieldType, field.Type)
+	}
+
 	// Parse version constraints
 	field.VersionSince = p.extractVersionSince(line)
 	field.VersionUntil = p.extractVersionUntil(line)
@@ -474,8 +479,18 @@ func (p *MCDocParser) parseType(typeStr string) MCDocType {
 	case strings.Contains(typeStr, "{"):
 		return MCDocTypeStruct
 	case strings.HasPrefix(typeStr, "("):
-		// Handle complex union types like "([ConfiguredFeatureRef] | ...)"
-		return MCDocTypeArray // Treat complex types as arrays for now
+		// Handle complex union types like "([ConfiguredFeatureRef] | ...)" or "(struct ... | ...)"
+		// If the union contains "struct", treat as struct
+		if strings.Contains(typeStr, "struct") {
+			return MCDocTypeStruct
+		}
+		// For incomplete types like just "(", we can't determine the type reliably
+		// Return Unknown so validation can be more flexible
+		if typeStr == "(" {
+			return MCDocTypeUnknown
+		}
+		// Otherwise treat as array for complex array types
+		return MCDocTypeArray
 	default:
 		// Handle complex types like BiomeCategory, BiomeEffects, etc.
 		// For now, treat them as struct types
@@ -688,6 +703,10 @@ func (p *MCDocParser) validateField(jsonValue interface{}, field *MCDocField, sc
 	var issues []string
 
 	switch field.Type {
+	case MCDocTypeUnknown:
+		// For unknown types (complex union types), accept any valid JSON value
+		// This is for cases where we can't determine the exact type from incomplete mcdoc syntax
+		return issues // No validation errors for unknown types
 	case MCDocTypeString:
 		if _, ok := jsonValue.(string); !ok {
 			issues = append(issues, fmt.Sprintf("Field '%s' should be a string, got %T", path, jsonValue))
