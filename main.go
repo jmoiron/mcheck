@@ -267,6 +267,12 @@ func (p *MCDocParser) parseSchemaContent(schema *MCDocSchema) error {
 			}
 		}
 
+		// Handle spread operator (...struct) at top level of main struct
+		// Check for spread operator regardless of brace level since it can appear anywhere in the main struct
+		if mainStruct != nil && inMainStruct && strings.Contains(line, "...struct") && !strings.Contains(line, ":") {
+			p.parseSpreadStruct(line, mainStruct, schema, lines, i)
+		}
+
 		// End of main struct
 		if inMainStruct && nestedBraceLevel < 0 {
 			inMainStruct = false
@@ -286,6 +292,64 @@ func (p *MCDocParser) parseSchemaContent(schema *MCDocSchema) error {
 	}
 
 	return nil
+}
+
+func (p *MCDocParser) parseSpreadStruct(line string, mainStruct *MCDocStruct, schema *MCDocSchema, lines []string, currentIndex int) {
+	// Extract the struct name from the spread line like "...struct ModernNoiseGeneratorSettings {"
+	structName := p.extractStructName(line)
+	if structName == "" {
+		return
+	}
+
+	// Get version constraints for the spread operator
+	spreadVersionSince, spreadVersionUntil := p.extractVersionFromContext(lines, currentIndex)
+
+	// Find the struct definition and parse its fields inline
+	braceLevel := 0
+	foundStart := false
+
+	// Look for the opening brace of the spread struct
+	for i := currentIndex; i < len(lines); i++ {
+		currentLine := strings.TrimSpace(lines[i])
+		if currentLine == "" || strings.HasPrefix(currentLine, "//") {
+			continue
+		}
+
+		braceLevel += strings.Count(currentLine, "{") - strings.Count(currentLine, "}")
+		
+		if !foundStart && strings.Contains(currentLine, "{") {
+			foundStart = true
+		}
+
+		// If we've closed all braces, we've found the end of the spread struct
+		if foundStart && braceLevel <= 0 {
+			break
+		}
+
+		// Parse fields within the spread struct
+		if foundStart && braceLevel > 0 && strings.Contains(currentLine, ":") && p.isValidFieldLine(currentLine) {
+			field := p.parseField(currentLine)
+			if field != nil {
+				// Check for field-level version constraints
+				field.VersionSince, field.VersionUntil = p.extractVersionFromContext(lines, i)
+				
+				// Apply spread-level version constraints as well
+				if spreadVersionSince != nil {
+					if field.VersionSince == nil || field.VersionSince.Compare(*spreadVersionSince) < 0 {
+						field.VersionSince = spreadVersionSince
+					}
+				}
+				if spreadVersionUntil != nil {
+					if field.VersionUntil == nil || field.VersionUntil.Compare(*spreadVersionUntil) > 0 {
+						field.VersionUntil = spreadVersionUntil
+					}
+				}
+				
+				field.IsAvailable = p.isFieldAvailableWithConstraints(field.VersionSince, field.VersionUntil)
+				mainStruct.Fields[field.Name] = field
+			}
+		}
+	}
 }
 
 func (p *MCDocParser) isValidFieldLine(line string) bool {
