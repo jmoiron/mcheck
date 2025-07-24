@@ -1,9 +1,17 @@
-The vanilla-mcdoc directory contains a nested set of schemas for Minecraft datapack objects in the "mcdoc" format, specified https://spyglassmc.com/user/mcdoc/specification.html
+"mcdoc" is a format used to define schemas for minecraft data files. It is specified in the html file `docs/specification.html`.
 
-These schemas apply to json files in Minecraft datapacks, and have version info in them such as `#[until="1.19.1"]` which means that a particular atribute or feature is only valid for versions 1.19.1 and earlier.
+The `vanilla-mcdocs` directory contains a nested set of mcdoc files describing various things, including minecraft datapack json files.
 
-I want you to create a command line tool in Go that is capable of checking a json file against a given schema. The tool should:
+I want a command line tool written in Go that check whether a datapack json file is correct for a given version of Minecraft according to the schemas in the `vanilla-mcdocs` directory.
 
-* parse the required `mcdata` files in order to perform validation
-* validate against a user-specified minecraft version
-* determine which kind of datapack item it is based on the current directory path, eg a file in `worldgen/noise_settings` should be validated against the `data/worldgen/noise_settings.mcdoc` file
+To build this tool, we need:
+
+- a parser for the `mcdoc` format
+- a way to match a json file to the appropriate schema
+- a way to validate the json structure against the parsed schema
+
+For the parser, we should create a PEG (parser expression grammar) parser. The `github.com/pointlander/peg` Go package can generate parsers in Go from peg files. The peg file format is described in `docs/peg-file-syntax.md` and there are example packages in `peg/grammars/`.
+
+We can match json files to schema files using the directory context of the file. A json file in a directory like `worldgen/noise_settings` should use the `data/worldgen/noise_settings.mcdoc` schema.
+
+There is already code in this directory that features an attempt to parse mcdoc files using regexp, but the regexp approach is not sophisticated enough for the mcdoc format.

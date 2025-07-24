@@ -1,3 +1,5 @@
+//go:generate peg grammar.peg
+
 package main
 
 import (
@@ -78,6 +80,7 @@ const (
 type MCDocField struct {
 	Name         string
 	Type         MCDocType
+	TypeName     string // Store original type string for named type resolution
 	Optional     bool
 	VersionSince *Version
 	VersionUntil *Version
@@ -88,19 +91,19 @@ type MCDocField struct {
 	Constraints  map[string]interface{}
 }
 
-type MCDocParser struct {
+type MCDocValidator struct {
 	targetVersion Version
 	schemaDir     string
 }
 
-func NewMCDocParser(targetVersion Version, schemaDir string) *MCDocParser {
-	return &MCDocParser{
+func NewMCDocValidator(targetVersion Version, schemaDir string) *MCDocValidator {
+	return &MCDocValidator{
 		targetVersion: targetVersion,
 		schemaDir:     schemaDir,
 	}
 }
 
-func (p *MCDocParser) determineSchemaPath(jsonPath string) (string, error) {
+func (p *MCDocValidator) determineSchemaPath(jsonPath string) (string, error) {
 	// Extract the relative path from the datapack structure
 	// Expected structure: data/(optional namespace)/type/subtype/file.json
 	parts := strings.Split(filepath.Clean(jsonPath), string(os.PathSeparator))
@@ -178,7 +181,7 @@ type MCDocEnum struct {
 	Values map[string]string
 }
 
-func (p *MCDocParser) parseSchema(schemaPath string) (*MCDocSchema, error) {
+func (p *MCDocValidator) parseSchema(schemaPath string) (*MCDocSchema, error) {
 	content, err := os.ReadFile(schemaPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read schema file: %w", err)
@@ -199,7 +202,7 @@ func (p *MCDocParser) parseSchema(schemaPath string) (*MCDocSchema, error) {
 	return schema, nil
 }
 
-func (p *MCDocParser) parseSchemaContent(schema *MCDocSchema) error {
+func (p *MCDocValidator) parseSchemaContent(schema *MCDocSchema) error {
 	content := schema.Content
 	lines := strings.Split(content, "\n")
 
@@ -294,7 +297,7 @@ func (p *MCDocParser) parseSchemaContent(schema *MCDocSchema) error {
 	return nil
 }
 
-func (p *MCDocParser) parseSpreadStruct(line string, mainStruct *MCDocStruct, schema *MCDocSchema, lines []string, currentIndex int) {
+func (p *MCDocValidator) parseSpreadStruct(line string, mainStruct *MCDocStruct, schema *MCDocSchema, lines []string, currentIndex int) {
 	// Extract the struct name from the spread line like "...struct ModernNoiseGeneratorSettings {"
 	structName := p.extractStructName(line)
 	if structName == "" {
@@ -352,7 +355,7 @@ func (p *MCDocParser) parseSpreadStruct(line string, mainStruct *MCDocStruct, sc
 	}
 }
 
-func (p *MCDocParser) isValidFieldLine(line string) bool {
+func (p *MCDocValidator) isValidFieldLine(line string) bool {
 	// Remove version annotations for analysis
 	cleanLine := regexp.MustCompile(`#\[[^\]]+\]`).ReplaceAllString(line, "")
 	cleanLine = strings.TrimSpace(cleanLine)
@@ -375,10 +378,11 @@ func (p *MCDocParser) isValidFieldLine(line string) bool {
 	return true
 }
 
-func (p *MCDocParser) parseOtherStructsAndEnums(schema *MCDocSchema, content string) {
+func (p *MCDocValidator) parseOtherStructsAndEnums(schema *MCDocSchema, content string) {
 	lines := strings.Split(content, "\n")
 	var currentStruct *MCDocStruct
 	var currentEnum *MCDocEnum
+	var braceLevel int // Track nesting level within the current struct
 
 	for i := 0; i < len(lines); i++ {
 		line := strings.TrimSpace(lines[i])
@@ -386,15 +390,24 @@ func (p *MCDocParser) parseOtherStructsAndEnums(schema *MCDocSchema, content str
 			continue
 		}
 
+		// Track brace levels
+		openBraces := strings.Count(line, "{")
+		closeBraces := strings.Count(line, "}")
+		braceLevel += openBraces - closeBraces
+
 		// Parse standalone struct definitions
 		if strings.HasPrefix(line, "struct ") {
 			structName := p.extractStructName(line)
 			if structName != "" {
+				if structName == "BiomeEffects" {
+					fmt.Printf("DEBUG: Found BiomeEffects struct definition\n")
+				}
 				currentStruct = &MCDocStruct{
 					Name:   structName,
 					Fields: make(map[string]*MCDocField),
 				}
 				schema.Structs[structName] = currentStruct
+				braceLevel = 0 // Reset brace level for new struct
 				continue
 			}
 		}
@@ -412,6 +425,26 @@ func (p *MCDocParser) parseOtherStructsAndEnums(schema *MCDocSchema, content str
 			}
 		}
 
+		// Parse struct fields - try to catch basic fields
+		if currentStruct != nil && strings.Contains(line, ":") && p.isValidFieldLine(line) {
+			// Only parse simple fields, skip nested structs
+			if strings.Contains(line, "struct ") {
+				continue // Skip nested struct definitions
+			}
+			if currentStruct.Name == "BiomeEffects" {
+				fmt.Printf("DEBUG: Parsing BiomeEffects field: %s (braceLevel: %d)\n", line, braceLevel)
+			}
+			field := p.parseField(line)
+			if field != nil {
+				field.VersionSince, field.VersionUntil = p.extractVersionFromContext(lines, i)
+				field.IsAvailable = p.isFieldAvailableWithConstraints(field.VersionSince, field.VersionUntil)
+				currentStruct.Fields[field.Name] = field
+				if currentStruct.Name == "BiomeEffects" {
+					fmt.Printf("DEBUG: Added BiomeEffects field: %s (type: %d, available: %t)\n", field.Name, field.Type, field.IsAvailable)
+				}
+			}
+		}
+
 		// Parse enum values
 		if currentEnum != nil && strings.Contains(line, "=") {
 			key, value := p.parseEnumValue(line)
@@ -421,18 +454,21 @@ func (p *MCDocParser) parseOtherStructsAndEnums(schema *MCDocSchema, content str
 		}
 
 		// End of struct/enum
-		if line == "}" {
+		if line == "}" && braceLevel == 0 {
 			if currentEnum != nil {
 				currentEnum = nil
 			}
 			if currentStruct != nil {
+				if currentStruct.Name == "BiomeEffects" {
+					fmt.Printf("DEBUG: Finished parsing BiomeEffects with %d fields\n", len(currentStruct.Fields))
+				}
 				currentStruct = nil
 			}
 		}
 	}
 }
 
-func (p *MCDocParser) extractStructName(line string) string {
+func (p *MCDocValidator) extractStructName(line string) string {
 	// Extract struct name from lines like "struct SpawnerData {" or "dispatch ... to struct Biome {"
 	re := regexp.MustCompile(`struct\s+(\w+)\s*\{`)
 	matches := re.FindStringSubmatch(line)
@@ -442,7 +478,7 @@ func (p *MCDocParser) extractStructName(line string) string {
 	return ""
 }
 
-func (p *MCDocParser) extractEnumName(line string) string {
+func (p *MCDocValidator) extractEnumName(line string) string {
 	// Extract enum name from lines like "enum(string) BiomeCategory {"
 	re := regexp.MustCompile(`enum\s*\([^)]*\)\s*(\w+)\s*\{`)
 	matches := re.FindStringSubmatch(line)
@@ -452,7 +488,7 @@ func (p *MCDocParser) extractEnumName(line string) string {
 	return ""
 }
 
-func (p *MCDocParser) parseField(line string) *MCDocField {
+func (p *MCDocValidator) parseField(line string) *MCDocField {
 	// Parse field definitions like "temperature: float" or "spawners: struct {"
 
 	// Remove version annotations for parsing
@@ -494,11 +530,12 @@ func (p *MCDocParser) parseField(line string) *MCDocField {
 		Name:     fieldName,
 		Optional: optional,
 		Type:     p.parseType(fieldType),
+		TypeName: fieldType, // Store original type string
 	}
 
 	// Debug for complex fields
-	if fieldName == "carvers" || fieldName == "features" {
-		fmt.Printf("DEBUG %s: fieldType='%s', parsedType=%d\n", fieldName, fieldType, field.Type)
+	if fieldName == "carvers" || fieldName == "features" || fieldName == "effects" {
+		fmt.Printf("DEBUG %s: fieldType='%s', parsedType=%d, typeName='%s'\n", fieldName, fieldType, field.Type, field.TypeName)
 	}
 
 	// Parse version constraints
@@ -508,7 +545,7 @@ func (p *MCDocParser) parseField(line string) *MCDocField {
 	return field
 }
 
-func (p *MCDocParser) parseEnumValue(line string) (string, string) {
+func (p *MCDocValidator) parseEnumValue(line string) (string, string) {
 	// Parse enum values like "Beach = "beach","
 	parts := strings.Split(line, "=")
 	if len(parts) != 2 {
@@ -522,7 +559,7 @@ func (p *MCDocParser) parseEnumValue(line string) (string, string) {
 	return key, value
 }
 
-func (p *MCDocParser) parseType(typeStr string) MCDocType {
+func (p *MCDocValidator) parseType(typeStr string) MCDocType {
 	typeStr = strings.TrimSpace(typeStr)
 
 	switch {
@@ -595,7 +632,7 @@ func parseVersionRequirement(line string) *VersionRequirement {
 	return req
 }
 
-func (p *MCDocParser) extractVersionSince(line string) *Version {
+func (p *MCDocValidator) extractVersionSince(line string) *Version {
 	req := parseVersionRequirement(line)
 	if req != nil {
 		return req.Since
@@ -603,7 +640,7 @@ func (p *MCDocParser) extractVersionSince(line string) *Version {
 	return nil
 }
 
-func (p *MCDocParser) extractVersionUntil(line string) *Version {
+func (p *MCDocValidator) extractVersionUntil(line string) *Version {
 	req := parseVersionRequirement(line)
 	if req != nil {
 		return req.Until
@@ -611,7 +648,7 @@ func (p *MCDocParser) extractVersionUntil(line string) *Version {
 	return nil
 }
 
-func (p *MCDocParser) extractVersionFromContext(lines []string, currentIndex int) (*Version, *Version) {
+func (p *MCDocValidator) extractVersionFromContext(lines []string, currentIndex int) (*Version, *Version) {
 	var sinceVersion *Version
 	var untilVersion *Version
 
@@ -635,7 +672,7 @@ func (p *MCDocParser) extractVersionFromContext(lines []string, currentIndex int
 	return sinceVersion, untilVersion
 }
 
-func (p *MCDocParser) isFieldAvailableWithConstraints(sinceVersion *Version, untilVersion *Version) bool {
+func (p *MCDocValidator) isFieldAvailableWithConstraints(sinceVersion *Version, untilVersion *Version) bool {
 	if sinceVersion != nil {
 		if p.targetVersion.Compare(*sinceVersion) < 0 {
 			return false
@@ -651,7 +688,7 @@ func (p *MCDocParser) isFieldAvailableWithConstraints(sinceVersion *Version, unt
 	return true
 }
 
-func (p *MCDocParser) isFieldAvailable(line string) bool {
+func (p *MCDocValidator) isFieldAvailable(line string) bool {
 	// Extract version constraints from the line
 	sinceVersion := p.extractVersionSince(line)
 	untilVersion := p.extractVersionUntil(line)
@@ -659,7 +696,7 @@ func (p *MCDocParser) isFieldAvailable(line string) bool {
 	return p.isFieldAvailableWithConstraints(sinceVersion, untilVersion)
 }
 
-func (p *MCDocParser) validateJSON(jsonPath string) error {
+func (p *MCDocValidator) validateJSON(jsonPath string) error {
 	// Determine the schema file to use
 	schemaPath, err := p.determineSchemaPath(jsonPath)
 	if err != nil {
@@ -719,7 +756,7 @@ func (p *MCDocParser) validateJSON(jsonPath string) error {
 	return nil
 }
 
-func (p *MCDocParser) validateStruct(jsonData map[string]interface{}, structDef *MCDocStruct, schema *MCDocSchema, path string) []string {
+func (p *MCDocValidator) validateStruct(jsonData map[string]interface{}, structDef *MCDocStruct, schema *MCDocSchema, path string) []string {
 	var issues []string
 
 	// Check required fields
@@ -763,7 +800,7 @@ func (p *MCDocParser) validateStruct(jsonData map[string]interface{}, structDef 
 	return issues
 }
 
-func (p *MCDocParser) validateField(jsonValue interface{}, field *MCDocField, schema *MCDocSchema, path string) []string {
+func (p *MCDocValidator) validateField(jsonValue interface{}, field *MCDocField, schema *MCDocSchema, path string) []string {
 	var issues []string
 
 	switch field.Type {
@@ -817,6 +854,39 @@ func (p *MCDocParser) validateField(jsonValue interface{}, field *MCDocField, sc
 				tempStruct := &MCDocStruct{Fields: field.StructFields}
 				structIssues := p.validateStruct(structData, tempStruct, schema, path)
 				issues = append(issues, structIssues...)
+			} else {
+				// Try to resolve named struct type from schema
+				structName := p.getStructNameFromField(field)
+				if structName != "" {
+					// Debug output for effects field
+					if field.Name == "effects" {
+						fmt.Printf("DEBUG: Looking for struct '%s'\n", structName)
+						fmt.Printf("DEBUG: Available structs: ")
+						for name := range schema.Structs {
+							fmt.Printf("%s ", name)
+						}
+						fmt.Printf("\n")
+					}
+					
+					if structDef, exists := schema.Structs[structName]; exists {
+						if field.Name == "effects" {
+							fmt.Printf("DEBUG: Found struct '%s' with %d fields\n", structName, len(structDef.Fields))
+							fmt.Printf("DEBUG: BiomeEffects fields: ")
+							for fname := range structDef.Fields {
+								fmt.Printf("%s ", fname)
+							}
+							fmt.Printf("\n")
+						}
+						structIssues := p.validateStruct(structData, structDef, schema, path)
+						issues = append(issues, structIssues...)
+					} else {
+						// Unknown struct type, skip validation
+						// This allows for forward compatibility with unknown types
+						if field.Name == "effects" {
+							fmt.Printf("DEBUG: Struct '%s' not found\n", structName)
+						}
+					}
+				}
 			}
 		} else {
 			issues = append(issues, fmt.Sprintf("Field '%s' should be an object, got %T", path, jsonValue))
@@ -824,6 +894,28 @@ func (p *MCDocParser) validateField(jsonValue interface{}, field *MCDocField, sc
 	}
 
 	return issues
+}
+
+func (p *MCDocValidator) getStructNameFromField(field *MCDocField) string {
+	// Use the stored TypeName for named struct lookups
+	typeName := strings.TrimSpace(field.TypeName)
+	
+	// Skip inline struct definitions
+	if strings.HasPrefix(typeName, "struct {") {
+		return ""
+	}
+	
+	// TEMPORARY: Re-enable BiomeEffects to test the mechanism
+	// if typeName == "BiomeEffects" {
+	// 	return ""
+	// }
+	
+	// For simple named types like "SpawnerData", return as-is
+	if typeName != "" && !strings.Contains(typeName, " ") && !strings.Contains(typeName, "(") {
+		return typeName
+	}
+	
+	return ""
 }
 
 func main() {
@@ -858,7 +950,7 @@ mcdoc schemas with version-specific constraints.`,
 			}
 
 			// Create parser and validate
-			parser := NewMCDocParser(targetVersion, schemaDir)
+			parser := NewMCDocValidator(targetVersion, schemaDir)
 			return parser.validateJSON(jsonPath)
 		},
 	}

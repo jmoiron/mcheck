@@ -12,7 +12,7 @@ func TestValidationGoodFiles(t *testing.T) {
 		t.Fatalf("Failed to parse version: %v", err)
 	}
 
-	parser := NewMCDocParser(version, "vanilla-mcdoc")
+	parser := NewMCDocValidator(version, "vanilla-mcdoc")
 
 	// Walk through all JSON files in tests/good
 	err = filepath.Walk("tests/good", func(path string, info os.FileInfo, err error) error {
@@ -45,7 +45,7 @@ func TestValidationBadFiles(t *testing.T) {
 		t.Fatalf("Failed to parse version: %v", err)
 	}
 
-	parser := NewMCDocParser(version, "vanilla-mcdoc")
+	parser := NewMCDocValidator(version, "vanilla-mcdoc")
 
 	// Walk through all JSON files in tests/bad
 	err = filepath.Walk("tests/bad", func(path string, info os.FileInfo, err error) error {

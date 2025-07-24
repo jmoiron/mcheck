@@ -1,0 +1,72 @@
+package main
+
+type MCDocParser Peg {
+}
+
+Start <- _ Statement* _ !.
+
+Statement <- (
+	UseStmt /
+	TypeAlias /
+	StructDef /
+	EnumDef /
+	DispatchStmt
+) _
+
+UseStmt <- 'use' _ UsePath _
+UsePath <- (DoubleColon / Identifier / SingleColon)+
+
+TypeAlias <- 'type' _ Identifier _ '=' _ Type _
+
+StructDef <- 'struct' _ Identifier _ '{' _ FieldList? _ '}' _
+FieldList <- Field (',' _ Field)* ','? _
+Field <- Attribute* _ FieldName _ ':' _ Type _
+FieldName <- Identifier '?'?
+
+EnumDef <- 'enum' _ '(' _ Type _ ')' _ Identifier _ '{' _ EnumValueList? _ '}' _
+EnumValueList <- EnumValue (',' _ EnumValue)* ','? _
+EnumValue <- Identifier _ '=' _ String _
+
+DispatchStmt <- 'dispatch' _ DispatchPath _ 'to' _ DispatchTarget _
+DispatchPath <- 'minecraft:resource[' Identifier ']'
+DispatchTarget <- ('struct' _ Identifier _ '{' _ FieldList? _ '}') / Type
+
+SpreadStruct <- '...' _ 'struct' _ Identifier _ '{' _ FieldList? _ '}' _
+
+Type <- (
+	UnionType /
+	ArrayType /
+	StructType /
+	PrimitiveType /
+	ReferenceType /
+	LiteralType
+)
+
+UnionType <- '(' _ Type (_ '|' _ Type)+ _ ')'
+ArrayType <- '[' _ Type _ ']' _ ArrayConstraint?
+StructType <- 'struct' _ '{' _ FieldList? _ '}'
+PrimitiveType <- ('string' / 'int' / 'float' / 'double' / 'boolean' / 'any')
+ReferenceType <- Identifier
+LiteralType <- (String / Number / Boolean)
+
+ArrayConstraint <- '@' _ (Number / Range)
+Range <- Number '..' Number
+
+Attribute <- '#[' _ AttributeList _ ']' _
+AttributeList <- AttributePair (',' _ AttributePair)*
+AttributePair <- Identifier '=' AttributeValue
+AttributeValue <- (String / Number / Boolean / Identifier)
+
+Comment <- '//' (!EOL .)* (EOL / !.)
+DocComment <- '///' (!EOL .)* (EOL / !.)
+
+Identifier <- [a-zA-Z_][a-zA-Z0-9_]*
+String <- '"' (!'"' .)* '"'
+Number <- [0-9]+ ('.' [0-9]+)?
+Boolean <- ('true' / 'false')
+
+DoubleColon <- '::'
+SingleColon <- ':'
+
+_ <- ([ \t\r\n] / Comment / DocComment)*
+EOL <- '\r\n' / '\n' / '\r'
