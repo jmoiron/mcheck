@@ -16,7 +16,8 @@ Statement <- (Attribute* _ (
 UseStmt <- 'use' _ UsePath
 UsePath <- (DoubleColon Identifier (DoubleColon Identifier)* / Identifier (DoubleColon Identifier / SingleColon Identifier)*)
 
-TypeAlias <- 'type' _ Identifier _ EQUALS Type
+TypeAlias <- 'type' _ TypeName _ EQUALS Type
+TypeName <- (GenericType / Identifier)
 
 StructDef <- 'struct' _ Identifier _ LBRACE FieldList? RBRACE
 FieldList <- FieldOrSpread (COMMA FieldOrSpread)* COMMA?
@@ -32,7 +33,7 @@ EnumValueList <- EnumValue (COMMA EnumValue)* COMMA?
 EnumValue <- Attribute* _ Identifier _ EQUALS String
 
 DispatchStmt <- 'dispatch' _ DispatchPath _ 'to' _ DispatchTarget
-DispatchPath <- 'minecraft:' Identifier LBRACKET DispatchKeyList RBRACKET
+DispatchPath <- 'minecraft:' Identifier LBRACKET DispatchKeyList RBRACKET (LT GenericTypeParams RT)?
 DispatchKeyList <- DispatchKey (COMMA DispatchKey)* COMMA?
 DispatchKey <- (StaticIndexKey / String / Identifier)
 DispatchTarget <- ('struct' _ Identifier _ LBRACE FieldList? RBRACE) / Type
@@ -45,22 +46,26 @@ Type <- (
 	ArrayType /
 	StructType /
 	ConstrainedType /
+	GenericType /
 	PrimitiveType /
 	ReferenceType /
 	LiteralType
 )
 
-AttributedType <- Attribute+ _ (UnionType / ArrayType / ConstrainedType / StructType / PrimitiveType / ReferenceType / LiteralType)
+AttributedType <- Attribute+ _ (UnionType / ArrayType / ConstrainedType / StructType / GenericType / PrimitiveType / ReferenceType / LiteralType)
 
-ConstrainedType <- (PrimitiveType / ReferenceType / LiteralType) _ ArrayConstraint
+ConstrainedType <- (PrimitiveType / ReferenceType / LiteralType) ArrayConstraint
 
 UnionType <- LPAREN Type (PIPE Type)* PIPE? RPAREN
 ArrayType <- LBRACKET Type RBRACKET ArrayConstraint?
 StructType <- 'struct' _ Identifier? _ LBRACE FieldList? RBRACE
+GenericType <- Identifier LT GenericTypeParams RT
+GenericTypeParams <- Type (COMMA Type)*
 PrimitiveType <- ('string' / 'double' / 'float' / 'int' / 'boolean' / 'any') _
 ReferenceType <- (ComplexReference / Identifier)
-ComplexReference <- Identifier COLON Identifier (LBRACKET LBRACKET ComplexRefParam RBRACKET RBRACKET / LBRACKET ComplexRefParam RBRACKET)
-ComplexRefParam <- (StaticIndexKey / String / Identifier)
+ComplexReference <- Identifier COLON Identifier (LBRACKET LBRACKET ComplexRefParam RBRACKET RBRACKET / LBRACKET ComplexRefParam RBRACKET) (LT GenericTypeParams RT)?
+ComplexRefParam <- (DottedStaticIndexKey / StaticIndexKey / String / Identifier)
+DottedStaticIndexKey <- StaticIndexKey '.' Identifier
 StaticIndexKey <- ('%fallback' / '%key' / '%parent' / '%none' / '%unknown') _
 LiteralType <- (String / Number / Boolean)
 
@@ -101,6 +106,8 @@ PIPE <- '|' _
 DOT <- '.' _
 SPREAD <- '...' _
 AT <- '@' _
+LT <- '<' _
+RT <- '>' _
 
 DoubleColon <- '::' _
 SingleColon <- ':' _

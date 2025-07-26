@@ -228,6 +228,41 @@ use super::CarveStep`,
 			input: `use ::java::util::particle::Particle`,
 			rule:  ruleUseStmt,
 		},
+		{
+			name:  "generic type from carver.mcdoc",
+			input: `FloatProvider<float>`,
+			rule:  ruleGenericType,
+		},
+		{
+			name:  "field with generic type",
+			input: `yScale: FloatProvider<float>,`,
+			rule:  ruleField,
+		},
+		{
+			name:  "dotted static index key",
+			input: `%parent.type`,
+			rule:  ruleDottedStaticIndexKey,
+		},
+		{
+			name:  "multi-parameter generic type",
+			input: `UniformInt<Base, Spread>`,
+			rule:  ruleGenericType,
+		},
+		{
+			name:  "type alias with multi-parameter generic",
+			input: `type UniformInt<Base, Spread> = string`,
+			rule:  ruleTypeAlias,
+		},
+		{
+			name:  "generic complex reference",
+			input: `minecraft:int_provider[[type]]<T>`,
+			rule:  ruleComplexReference,
+		},
+		{
+			name:  "generic dispatch path",
+			input: `minecraft:int_provider[uniform,biased_to_bottom]<T>`,
+			rule:  ruleDispatchPath,
+		},
 	}
 	
 	for _, tt := range tests {
