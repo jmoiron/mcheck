@@ -174,6 +174,60 @@ func TestPEGParserIndividualRules(t *testing.T) {
 			input: `(#[until="1.21.2"] IngredientValue | #[until="1.21.2"] [IngredientValue])`,
 			rule:  ruleUnionType,
 		},
+		{
+			name:  "attributed parenthesized union",
+			input: `#[since="1.21.2"] ([CarverRef] | string)`,
+			rule:  ruleAttributedType,
+		},
+		{
+			name:  "simple type alias with separator tokens",
+			input: `type Test = string`,
+			rule:  ruleTypeAlias,
+		},
+		{
+			name:  "simple union type",
+			input: `(string | int)`,
+			rule:  ruleUnionType,
+		},
+		{
+			name:  "multiline dispatch key list",
+			input: `dispatch minecraft:template_pool_element[
+	legacy_single_pool_element,
+	single_pool_element,
+] to struct SingleElement {}`,
+			rule:  ruleDispatchStmt,
+		},
+		{
+			name:  "dispatch with string key from biome.mcdoc",
+			input: `dispatch minecraft:resource["worldgen/biome"] to struct Biome {}`,
+			rule:  ruleDispatchStmt,
+		},
+		{
+			name:  "biome.mcdoc first few lines",
+			input: `use ::java::util::particle::Particle
+use super::CarveStep
+
+dispatch minecraft:resource["worldgen/biome"] to struct Biome {
+	temperature: float,
+}`,
+			rule:  ruleStart,
+		},
+		{
+			name:  "just use statements",
+			input: `use ::java::util::particle::Particle
+use super::CarveStep`,
+			rule:  ruleStart,
+		},
+		{
+			name:  "single use statement",
+			input: `use super::CarveStep`,
+			rule:  ruleUseStmt,
+		},
+		{
+			name:  "use statement with leading double colon",
+			input: `use ::java::util::particle::Particle`,
+			rule:  ruleUseStmt,
+		},
 	}
 	
 	for _, tt := range tests {

@@ -13,31 +13,31 @@ Statement <- (Attribute* _ (
 	DispatchStmt
 )) _
 
-UseStmt <- 'use' _ UsePath _
-UsePath <- (DoubleColon / Identifier / SingleColon)+
+UseStmt <- 'use' _ UsePath
+UsePath <- (DoubleColon Identifier (DoubleColon Identifier)* / Identifier (DoubleColon Identifier / SingleColon Identifier)*)
 
-TypeAlias <- 'type' _ Identifier _ '=' _ Type _
+TypeAlias <- 'type' _ Identifier _ EQUALS Type
 
-StructDef <- 'struct' _ Identifier _ '{' _ FieldList? _ '}' _
-FieldList <- FieldOrSpread (',' _ FieldOrSpread)* ','? _
+StructDef <- 'struct' _ Identifier _ LBRACE FieldList? RBRACE
+FieldList <- FieldOrSpread (COMMA FieldOrSpread)* COMMA?
 FieldOrSpread <- SpreadField / Field
 Field <- Attribute* _ (ComputedField / NamedField)
-ComputedField <- '[' _ Type _ ']' _ ':' _ Type _
-NamedField <- FieldName _ ':' _ Type _
-SpreadField <- Attribute* _ '...' _ Type _
-FieldName <- Identifier '?'?
+ComputedField <- LBRACKET Type RBRACKET COLON Type
+NamedField <- FieldName COLON Type
+SpreadField <- Attribute* _ SPREAD Type
+FieldName <- Identifier '?'? _
 
-EnumDef <- 'enum' _ '(' _ Type _ ')' _ Identifier _ '{' _ EnumValueList? _ '}' _
-EnumValueList <- EnumValue (',' _ EnumValue)* ','? _
-EnumValue <- Identifier _ '=' _ String _
+EnumDef <- 'enum' _ LPAREN Type RPAREN Identifier _ LBRACE EnumValueList? RBRACE
+EnumValueList <- EnumValue (COMMA EnumValue)* COMMA?
+EnumValue <- Attribute* _ Identifier _ EQUALS String
 
-DispatchStmt <- 'dispatch' _ DispatchPath _ 'to' _ DispatchTarget _
-DispatchPath <- 'minecraft:' Identifier '[' DispatchKeyList ']'
-DispatchKeyList <- DispatchKey (',' DispatchKey)*
-DispatchKey <- StaticIndexKey / Identifier
-DispatchTarget <- ('struct' _ Identifier _ '{' _ FieldList? _ '}') / Type
+DispatchStmt <- 'dispatch' _ DispatchPath _ 'to' _ DispatchTarget
+DispatchPath <- 'minecraft:' Identifier LBRACKET DispatchKeyList RBRACKET
+DispatchKeyList <- DispatchKey (COMMA DispatchKey)* COMMA?
+DispatchKey <- (StaticIndexKey / String / Identifier)
+DispatchTarget <- ('struct' _ Identifier _ LBRACE FieldList? RBRACE) / Type
 
-SpreadStruct <- '...' _ 'struct' _ Identifier _ '{' _ FieldList? _ '}' _
+SpreadStruct <- SPREAD 'struct' _ Identifier _ LBRACE FieldList? RBRACE
 
 Type <- (
 	UnionType /
@@ -50,44 +50,60 @@ Type <- (
 	LiteralType
 )
 
-AttributedType <- Attribute+ _ (ArrayType / ConstrainedType / StructType / PrimitiveType / ReferenceType / LiteralType)
+AttributedType <- Attribute+ _ (UnionType / ArrayType / ConstrainedType / StructType / PrimitiveType / ReferenceType / LiteralType)
 
 ConstrainedType <- (PrimitiveType / ReferenceType / LiteralType) _ ArrayConstraint
 
-UnionType <- '(' _ Type (_ '|' _ Type)* (_ '|')? _ ')'
-ArrayType <- '[' _ Type _ ']' _ ArrayConstraint?
-StructType <- 'struct' _ Identifier? _ '{' _ FieldList? _ '}'
-PrimitiveType <- ('string' / 'double' / 'float' / 'int' / 'boolean' / 'any')
-ReferenceType <- ComplexReference / Identifier
-ComplexReference <- Identifier ':' Identifier ('[' '[' ComplexRefParam ']' ']' / '[' ComplexRefParam ']')
-ComplexRefParam <- StaticIndexKey / String / Identifier
-StaticIndexKey <- '%fallback' / '%key' / '%parent' / '%none' / '%unknown'
+UnionType <- LPAREN Type (PIPE Type)* PIPE? RPAREN
+ArrayType <- LBRACKET Type RBRACKET ArrayConstraint?
+StructType <- 'struct' _ Identifier? _ LBRACE FieldList? RBRACE
+PrimitiveType <- ('string' / 'double' / 'float' / 'int' / 'boolean' / 'any') _
+ReferenceType <- (ComplexReference / Identifier)
+ComplexReference <- Identifier COLON Identifier (LBRACKET LBRACKET ComplexRefParam RBRACKET RBRACKET / LBRACKET ComplexRefParam RBRACKET)
+ComplexRefParam <- (StaticIndexKey / String / Identifier)
+StaticIndexKey <- ('%fallback' / '%key' / '%parent' / '%none' / '%unknown') _
 LiteralType <- (String / Number / Boolean)
 
-ArrayConstraint <- '@' _ (Range / Number)
-Range <- Number '..' Number?
+ArrayConstraint <- AT (Range / Number)
+Range <- (Number '..' Number?) / ('..' Number)
 
-Attribute <- '#[' _ AttributeList _ ']' _
-AttributeList <- AttributeItem (',' _ AttributeItem)*
-AttributeItem <- AttributePair / AttributeCall / Identifier
-AttributeCall <- Identifier '(' _ AttributeParamList? _ ')'
-AttributeParamList <- AttributeParam (_ ',' _ AttributeParam)*
-AttributeParam <- AttributePair / AttributeValue
-AttributePair <- Identifier '=' AttributeValue
+Attribute <- '#' LBRACKET AttributeList RBRACKET
+AttributeList <- AttributeItem (COMMA AttributeItem)*
+AttributeItem <- (AttributePair / AttributeCall / Identifier)
+AttributeCall <- Identifier LPAREN AttributeParamList? RPAREN
+AttributeParamList <- AttributeParam (COMMA AttributeParam)*
+AttributeParam <- (AttributePair / AttributeValue)
+AttributePair <- Identifier EQUALS AttributeValue
 AttributeValue <- (ArrayLiteral / String / Number / Boolean / Identifier)
 
-ArrayLiteral <- '[' _ (AttributeValue (_ ',' _ AttributeValue)*)? _ ']'
+ArrayLiteral <- LBRACKET (AttributeValue (COMMA AttributeValue)*)? RBRACKET
 
 Comment <- '//' (!EOL .)* (EOL / !.)
 DocComment <- '///' (!EOL .)* (EOL / !.)
 
-Identifier <- [a-zA-Z_][a-zA-Z0-9_]*
-String <- '"' (!'"' .)* '"'
-Number <- '-'? [0-9]+ ('.' [0-9]+)?
-Boolean <- ('true' / 'false')
+Identifier <- [a-zA-Z_][a-zA-Z0-9_]* _
+String <- '"' (!'"' .)* '"' _
+Number <- '-'? [0-9]+ ('.' [0-9]+)? _
+Boolean <- ('true' / 'false') _
 
-DoubleColon <- '::'
-SingleColon <- ':'
+# Separator tokens with optional trailing whitespace
+LBRACE <- '{' _
+RBRACE <- '}' _
+LBRACKET <- '[' _
+RBRACKET <- ']' _
+LPAREN <- '(' _
+RPAREN <- ')' _
+COMMA <- ',' _
+COLON <- ':' _
+SEMICOLON <- ';' _
+EQUALS <- '=' _
+PIPE <- '|' _
+DOT <- '.' _
+SPREAD <- '...' _
+AT <- '@' _
+
+DoubleColon <- '::' _
+SingleColon <- ':' _
 
 _ <- ([ \t\r\n] / Comment / DocComment)*
 EOL <- '\r\n' / '\n' / '\r'
