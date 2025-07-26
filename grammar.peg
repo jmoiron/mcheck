@@ -33,7 +33,7 @@ EnumValueList <- EnumValue (COMMA EnumValue)* COMMA?
 EnumValue <- Attribute* _ Identifier _ EQUALS String
 
 DispatchStmt <- 'dispatch' _ DispatchPath _ 'to' _ DispatchTarget
-DispatchPath <- 'minecraft:' Identifier LBRACKET DispatchKeyList RBRACKET (LT GenericTypeParams RT)?
+DispatchPath <- 'minecraft:' ResourcePath LBRACKET DispatchKeyList RBRACKET (LT GenericTypeParams RT)?
 DispatchKeyList <- DispatchKey (COMMA DispatchKey)* COMMA?
 DispatchKey <- (StaticIndexKey / String / Identifier)
 DispatchTarget <- ('struct' _ Identifier _ LBRACE FieldList? RBRACE) / Type
@@ -63,18 +63,20 @@ GenericType <- Identifier LT GenericTypeParams RT
 GenericTypeParams <- Type (COMMA Type)*
 PrimitiveType <- ('string' / 'double' / 'float' / 'int' / 'boolean' / 'any') _
 ReferenceType <- (ComplexReference / Identifier)
-ComplexReference <- Identifier COLON Identifier (LBRACKET LBRACKET ComplexRefParam RBRACKET RBRACKET / LBRACKET ComplexRefParam RBRACKET) (LT GenericTypeParams RT)?
-ComplexRefParam <- (DottedStaticIndexKey / StaticIndexKey / String / Identifier)
-DottedStaticIndexKey <- StaticIndexKey '.' Identifier
+ComplexReference <- Identifier COLON ResourcePath (LBRACKET LBRACKET ComplexRefParam RBRACKET RBRACKET / LBRACKET ComplexRefParam RBRACKET) (LT GenericTypeParams RT)?
+ResourcePath <- Identifier ('/' Identifier)*
+ComplexRefParam <- (DottedPath / StaticIndexKey / String / Identifier)
+DottedPath <- (StaticIndexKey / Identifier) ('.' Identifier)+
 StaticIndexKey <- ('%fallback' / '%key' / '%parent' / '%none' / '%unknown') _
 LiteralType <- (String / Number / Boolean)
 
 ArrayConstraint <- AT (Range / Number)
-Range <- (Number '..' Number?) / ('..' Number)
+Range <- (Number DOTDOT Number) / (Number DOTDOT) / (DOTDOT Number)
 
 Attribute <- '#' LBRACKET AttributeList RBRACKET
 AttributeList <- AttributeItem (COMMA AttributeItem)*
-AttributeItem <- (AttributePair / AttributeCall / Identifier)
+AttributeItem <- (AttributePair / AttributeCall / AttributeCallWithEquals / Identifier)
+AttributeCallWithEquals <- Identifier EQUALS LPAREN AttributeParamList? RPAREN
 AttributeCall <- Identifier LPAREN AttributeParamList? RPAREN
 AttributeParamList <- AttributeParam (COMMA AttributeParam)*
 AttributeParam <- (AttributePair / AttributeValue)
@@ -108,6 +110,7 @@ SPREAD <- '...' _
 AT <- '@' _
 LT <- '<' _
 RT <- '>' _
+DOTDOT <- '..' _
 
 DoubleColon <- '::' _
 SingleColon <- ':' _

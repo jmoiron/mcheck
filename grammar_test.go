@@ -241,7 +241,7 @@ use super::CarveStep`,
 		{
 			name:  "dotted static index key",
 			input: `%parent.type`,
-			rule:  ruleDottedStaticIndexKey,
+			rule:  ruleDottedPath,
 		},
 		{
 			name:  "multi-parameter generic type",
@@ -262,6 +262,61 @@ use super::CarveStep`,
 			name:  "generic dispatch path",
 			input: `minecraft:int_provider[uniform,biased_to_bottom]<T>`,
 			rule:  ruleDispatchPath,
+		},
+		{
+			name:  "attribute call with equals",
+			input: `#[id=(registry="worldgen/noise_settings",definition=true)]`,
+			rule:  ruleAttribute,
+		},
+		{
+			name:  "open ended range",
+			input: `0..`,
+			rule:  ruleRange,
+		},
+		{
+			name:  "constrained type with open ended range",
+			input: `int @ 0..`,
+			rule:  ruleConstrainedType,
+		},
+		{
+			name:  "union with open ended range",
+			input: `(int @ 0.. | struct Test {})`,
+			rule:  ruleUnionType,
+		},
+		{
+			name:  "union with open ended range extra spaces",
+			input: `( int @ 0.. | struct Test {} )`,
+			rule:  ruleUnionType,
+		},
+		{
+			name:  "simple union with constrained int",
+			input: `(int @ 0..1 | string)`,
+			rule:  ruleUnionType,
+		},
+		{
+			name:  "simple union with open ended range",
+			input: `(int @ 0.. | string)`,
+			rule:  ruleUnionType,
+		},
+		{
+			name:  "complex reference with resource path",
+			input: `minecraft:worldgen/pool_alias_binding[[type]]`,
+			rule:  ruleComplexReference,
+		},
+		{
+			name:  "dispatch path with resource path",
+			input: `minecraft:worldgen/pool_alias_binding[direct]`,
+			rule:  ruleDispatchPath,
+		},
+		{
+			name:  "dotted path simple",
+			input: `output_state.Name`,
+			rule:  ruleDottedPath,
+		},
+		{
+			name:  "dotted path with static index",
+			input: `%parent.output_state.Name`,
+			rule:  ruleDottedPath,
 		},
 	}
 	
