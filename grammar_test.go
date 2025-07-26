@@ -76,33 +76,103 @@ func TestPEGParserIndividualRules(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
-		rule     int // rule index from the generated parser
+		rule     pegRule // rule from the generated parser
 		wantFail bool
 	}{
 		{
 			name:  "simple use statement",
 			input: "use super::loot::LootCondition",
-			rule:  2, // ruleUseStmt
+			rule:  ruleUseStmt,
 		},
 		{
 			name:  "type alias",
 			input: "type Predicate = (LootCondition | [LootCondition])",
-			rule:  4, // ruleTypeAlias  
+			rule:  ruleTypeAlias,
 		},
 		{
 			name:  "dispatch statement",
 			input: `dispatch minecraft:resource[predicate] to Predicate`,
-			rule:  12, // ruleDispatchStmt
+			rule:  ruleDispatchStmt,
 		},
 		{
 			name:  "simple struct",
 			input: "struct Test { field: string }",
-			rule:  5, // ruleStructDef
+			rule:  ruleStructDef,
 		},
 		{
 			name:  "enum definition",
 			input: `enum(string) Category { Building = "building", Misc = "misc" }`,
-			rule:  9, // ruleEnumDef
+			rule:  ruleEnumDef,
+		},
+		{
+			name:  "attribute with string value",
+			input: `#[id="worldgen/material_rule"]`,
+			rule:  ruleAttribute,
+		},
+		{
+			name:  "field with attribute",
+			input: `type: #[id="test"] string`,
+			rule:  ruleField,
+		},
+		{
+			name:  "dispatch with single bracket",
+			input: `dispatch minecraft:surface_rule[block] to struct BlockRule { result_state: BlockState }`,
+			rule:  ruleDispatchStmt,
+		},
+		{
+			name:  "constrained type with negative range",
+			input: `int @ -20..20`,
+			rule:  ruleConstrainedType,
+		},
+		{
+			name:  "field with range constraint",
+			input: `surface_depth_multiplier: int @ -20..20,`,
+			rule:  ruleField,
+		},
+		{
+			name:  "dispatch with percent parameter",
+			input: `dispatch minecraft:recipe_serializer[%unknown] to struct {}`,
+			rule:  ruleDispatchStmt,
+		},
+		{
+			name:  "dispatch path only",
+			input: `minecraft:recipe_serializer[%unknown]`,
+			rule:  ruleDispatchPath,
+		},
+		{
+			name:  "identifier with underscore",
+			input: `recipe_serializer`,
+			rule:  ruleIdentifier,
+		},
+		{
+			name:  "attribute call with parameters",
+			input: `#[crafting_ingredient(definition=true)]`,
+			rule:  ruleAttribute,
+		},
+		{
+			name:  "attributed string with constraint alone",
+			input: `#[test] string @ 1..3`,
+			rule:  ruleAttributedType,
+		},
+		{
+			name:  "computed field",
+			input: `[#[crafting_ingredient] string]: Ingredient`,
+			rule:  ruleComputedField,
+		},
+		{
+			name:  "attribute with array parameter",
+			input: `#[id(registry="item",exclude=["air"])]`,
+			rule:  ruleAttribute,
+		},
+		{
+			name:  "array literal",
+			input: `["air"]`,
+			rule:  ruleArrayLiteral,
+		},
+		{
+			name:  "union with attributed type",
+			input: `(#[until="1.21.2"] IngredientValue | #[until="1.21.2"] [IngredientValue])`,
+			rule:  ruleUnionType,
 		},
 	}
 	
@@ -118,7 +188,7 @@ func TestPEGParserIndividualRules(t *testing.T) {
 				t.Fatalf("Failed to initialize parser: %v", err)
 			}
 			
-			err = parser.Parse(tt.rule)
+			err = parser.Parse(int(tt.rule))
 			if tt.wantFail {
 				if err == nil {
 					t.Errorf("Expected parsing to fail, but it succeeded")

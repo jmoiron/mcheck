@@ -5,13 +5,13 @@ type MCDocParser Peg {
 
 Start <- _ Statement* _ !.
 
-Statement <- (
+Statement <- (Attribute* _ (
 	UseStmt /
 	TypeAlias /
 	StructDef /
 	EnumDef /
 	DispatchStmt
-) _
+)) _
 
 UseStmt <- 'use' _ UsePath _
 UsePath <- (DoubleColon / Identifier / SingleColon)+
@@ -19,8 +19,12 @@ UsePath <- (DoubleColon / Identifier / SingleColon)+
 TypeAlias <- 'type' _ Identifier _ '=' _ Type _
 
 StructDef <- 'struct' _ Identifier _ '{' _ FieldList? _ '}' _
-FieldList <- Field (',' _ Field)* ','? _
-Field <- Attribute* _ FieldName _ ':' _ Type _
+FieldList <- FieldOrSpread (',' _ FieldOrSpread)* ','? _
+FieldOrSpread <- SpreadField / Field
+Field <- Attribute* _ (ComputedField / NamedField)
+ComputedField <- '[' _ Type _ ']' _ ':' _ Type _
+NamedField <- FieldName _ ':' _ Type _
+SpreadField <- Attribute* _ '...' _ Type _
 FieldName <- Identifier '?'?
 
 EnumDef <- 'enum' _ '(' _ Type _ ')' _ Identifier _ '{' _ EnumValueList? _ '}' _
@@ -28,41 +32,58 @@ EnumValueList <- EnumValue (',' _ EnumValue)* ','? _
 EnumValue <- Identifier _ '=' _ String _
 
 DispatchStmt <- 'dispatch' _ DispatchPath _ 'to' _ DispatchTarget _
-DispatchPath <- 'minecraft:resource[' Identifier ']'
+DispatchPath <- 'minecraft:' Identifier '[' DispatchKeyList ']'
+DispatchKeyList <- DispatchKey (',' DispatchKey)*
+DispatchKey <- StaticIndexKey / Identifier
 DispatchTarget <- ('struct' _ Identifier _ '{' _ FieldList? _ '}') / Type
 
 SpreadStruct <- '...' _ 'struct' _ Identifier _ '{' _ FieldList? _ '}' _
 
 Type <- (
 	UnionType /
+	AttributedType /
 	ArrayType /
 	StructType /
+	ConstrainedType /
 	PrimitiveType /
 	ReferenceType /
 	LiteralType
 )
 
-UnionType <- '(' _ Type (_ '|' _ Type)+ _ ')'
+AttributedType <- Attribute+ _ (ArrayType / ConstrainedType / StructType / PrimitiveType / ReferenceType / LiteralType)
+
+ConstrainedType <- (PrimitiveType / ReferenceType / LiteralType) _ ArrayConstraint
+
+UnionType <- '(' _ Type (_ '|' _ Type)* (_ '|')? _ ')'
 ArrayType <- '[' _ Type _ ']' _ ArrayConstraint?
-StructType <- 'struct' _ '{' _ FieldList? _ '}'
-PrimitiveType <- ('string' / 'int' / 'float' / 'double' / 'boolean' / 'any')
-ReferenceType <- Identifier
+StructType <- 'struct' _ Identifier? _ '{' _ FieldList? _ '}'
+PrimitiveType <- ('string' / 'double' / 'float' / 'int' / 'boolean' / 'any')
+ReferenceType <- ComplexReference / Identifier
+ComplexReference <- Identifier ':' Identifier ('[' '[' ComplexRefParam ']' ']' / '[' ComplexRefParam ']')
+ComplexRefParam <- StaticIndexKey / String / Identifier
+StaticIndexKey <- '%fallback' / '%key' / '%parent' / '%none' / '%unknown'
 LiteralType <- (String / Number / Boolean)
 
-ArrayConstraint <- '@' _ (Number / Range)
-Range <- Number '..' Number
+ArrayConstraint <- '@' _ (Range / Number)
+Range <- Number '..' Number?
 
 Attribute <- '#[' _ AttributeList _ ']' _
-AttributeList <- AttributePair (',' _ AttributePair)*
+AttributeList <- AttributeItem (',' _ AttributeItem)*
+AttributeItem <- AttributePair / AttributeCall / Identifier
+AttributeCall <- Identifier '(' _ AttributeParamList? _ ')'
+AttributeParamList <- AttributeParam (_ ',' _ AttributeParam)*
+AttributeParam <- AttributePair / AttributeValue
 AttributePair <- Identifier '=' AttributeValue
-AttributeValue <- (String / Number / Boolean / Identifier)
+AttributeValue <- (ArrayLiteral / String / Number / Boolean / Identifier)
+
+ArrayLiteral <- '[' _ (AttributeValue (_ ',' _ AttributeValue)*)? _ ']'
 
 Comment <- '//' (!EOL .)* (EOL / !.)
 DocComment <- '///' (!EOL .)* (EOL / !.)
 
 Identifier <- [a-zA-Z_][a-zA-Z0-9_]*
 String <- '"' (!'"' .)* '"'
-Number <- [0-9]+ ('.' [0-9]+)?
+Number <- '-'? [0-9]+ ('.' [0-9]+)?
 Boolean <- ('true' / 'false')
 
 DoubleColon <- '::'
