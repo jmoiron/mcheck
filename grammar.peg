@@ -13,8 +13,9 @@ Statement <- (Attribute* _ (
 	DispatchStmt
 )) _
 
-UseStmt <- 'use' _ UsePath
-UsePath <- (DoubleColon Identifier (DoubleColon Identifier)* / Identifier (DoubleColon Identifier / SingleColon Identifier)*)
+UseStmt <- 'use' _ Path
+Path <- DoubleColon? PathSegment (DoubleColon PathSegment)*
+PathSegment <- ('super' / Identifier)
 
 TypeAlias <- 'type' _ TypeName _ EQUALS Type
 TypeName <- (GenericType / Identifier)
@@ -23,17 +24,17 @@ StructDef <- 'struct' _ Identifier _ LBRACE FieldList? RBRACE
 FieldList <- FieldOrSpread (COMMA FieldOrSpread)* COMMA?
 FieldOrSpread <- SpreadField / Field
 Field <- Attribute* _ (ComputedField / NamedField)
-ComputedField <- LBRACKET Type RBRACKET COLON Type
+ComputedField <- LBRACKET Type RBRACKET QUESTION? COLON Type
 NamedField <- FieldName COLON Type
 SpreadField <- Attribute* _ SPREAD Type
-FieldName <- Identifier '?'? _
+FieldName <- Identifier QUESTION?
 
 EnumDef <- 'enum' _ LPAREN Type RPAREN Identifier _ LBRACE EnumValueList? RBRACE
 EnumValueList <- EnumValue (COMMA EnumValue)* COMMA?
 EnumValue <- Attribute* _ Identifier _ EQUALS String
 
 DispatchStmt <- 'dispatch' _ DispatchPath _ 'to' _ DispatchTarget
-DispatchPath <- 'minecraft:' ResourcePath LBRACKET DispatchKeyList RBRACKET (LT GenericTypeParams RT)?
+DispatchPath <- Identifier COLON ResourcePath LBRACKET DispatchKeyList RBRACKET (LT GenericTypeParams RT)?
 DispatchKeyList <- DispatchKey (COMMA DispatchKey)* COMMA?
 DispatchKey <- (StaticIndexKey / String / Identifier)
 DispatchTarget <- ('struct' _ Identifier _ LBRACE FieldList? RBRACE) / Type
@@ -57,12 +58,12 @@ AttributedType <- Attribute+ _ (UnionType / ArrayType / ConstrainedType / Struct
 ConstrainedType <- (PrimitiveType / ReferenceType / LiteralType) ArrayConstraint
 
 UnionType <- LPAREN Type (PIPE Type)* PIPE? RPAREN
-ArrayType <- LBRACKET Type RBRACKET ArrayConstraint?
+ArrayType <- (LBRACKET Type RBRACKET ArrayConstraint?) / (PrimitiveType LBRACKET RBRACKET) / (ReferenceType LBRACKET RBRACKET)
 StructType <- 'struct' _ Identifier? _ LBRACE FieldList? RBRACE
 GenericType <- Identifier LT GenericTypeParams RT
 GenericTypeParams <- Type (COMMA Type)*
 PrimitiveType <- ('string' / 'double' / 'float' / 'int' / 'boolean' / 'any') _
-ReferenceType <- (ComplexReference / Identifier)
+ReferenceType <- (ComplexReference / Path / Identifier)
 ComplexReference <- Identifier COLON ResourcePath (LBRACKET LBRACKET ComplexRefParam RBRACKET RBRACKET / LBRACKET ComplexRefParam RBRACKET) (LT GenericTypeParams RT)?
 ResourcePath <- Identifier ('/' Identifier)*
 ComplexRefParam <- (DottedPath / StaticIndexKey / String / Identifier)
@@ -71,7 +72,8 @@ StaticIndexKey <- ('%fallback' / '%key' / '%parent' / '%none' / '%unknown') _
 LiteralType <- (String / Number / Boolean)
 
 ArrayConstraint <- AT (Range / Number)
-Range <- (Number DOTDOT Number) / (Number DOTDOT) / (DOTDOT Number)
+Range <- (Number RangeOperator Number) / (Number RangeOperator) / (RangeOperator Number)
+RangeOperator <- LT? DOTDOT LT?
 
 Attribute <- '#' LBRACKET AttributeList RBRACKET
 AttributeList <- AttributeItem (COMMA AttributeItem)*
@@ -81,7 +83,7 @@ AttributeCall <- Identifier LPAREN AttributeParamList? RPAREN
 AttributeParamList <- AttributeParam (COMMA AttributeParam)*
 AttributeParam <- (AttributePair / AttributeValue)
 AttributePair <- Identifier EQUALS AttributeValue
-AttributeValue <- (ArrayLiteral / String / Number / Boolean / Identifier)
+AttributeValue <- (ArrayLiteral / ComplexReference / String / Number / Boolean / Identifier)
 
 ArrayLiteral <- LBRACKET (AttributeValue (COMMA AttributeValue)*)? RBRACKET
 
@@ -111,6 +113,7 @@ AT <- '@' _
 LT <- '<' _
 RT <- '>' _
 DOTDOT <- '..' _
+QUESTION <- '?' _
 
 DoubleColon <- '::' _
 SingleColon <- ':' _

@@ -229,6 +229,82 @@ use super::CarveStep`,
 			rule:  ruleUseStmt,
 		},
 		{
+			name:  "simple path reference",
+			input: `super::SpawnPrioritySelectors`,
+			rule:  rulePath,
+		},
+		{
+			name:  "malformed attribute call",
+			input: `#[id(registry="worldgen/structure_set"]`,
+			rule:  ruleAttribute,
+			wantFail: true,
+		},
+		{
+			name:  "computed field with complex reference",
+			input: `[#[id="enchantment_effect_component_type"] string]?: minecraft:effect_component[[%key]]`,
+			rule:  ruleField,
+		},
+		{
+			name:  "percent key static index",
+			input: `%key`,
+			rule:  ruleStaticIndexKey,
+		},
+		{
+			name:  "complex reference with percent key",
+			input: `minecraft:effect_component[[%key]]`,
+			rule:  ruleComplexReference,
+		},
+		{
+			name:  "computed field key only",
+			input: `[#[id="enchantment_effect_component_type"] string]`,
+			rule:  ruleType,
+		},
+		{
+			name:  "inclusive range",
+			input: `0..10`,
+			rule:  ruleRange,
+		},
+		{
+			name:  "exclusive upper range",
+			input: `0<..10`,
+			rule:  ruleRange,
+		},
+		{
+			name:  "exclusive lower range",
+			input: `0..<10`,
+			rule:  ruleRange,
+		},
+		{
+			name:  "exclusive both range",
+			input: `0<..<10`,
+			rule:  ruleRange,
+		},
+		{
+			name:  "open ended inclusive range",
+			input: `0..`,
+			rule:  ruleRange,
+		},
+		{
+			name:  "open ended exclusive range",
+			input: `0<..`,
+			rule:  ruleRange,
+		},
+		{
+			name:  "exclusive upper open range",
+			input: `..<10`,
+			rule:  ruleRange,
+		},
+		{
+			name:  "attribute with complex reference",
+			input: `#[nbt_path=minecraft:item[%fallback]]`,
+			rule:  ruleAttribute,
+		},
+		{
+			name:  "full line 78 from function.mcdoc",
+			input: `#[until="1.20.5"] #[nbt_path=minecraft:item[%fallback]] string`,
+			rule:  ruleType,
+		},
+		{
 			name:  "generic type from carver.mcdoc",
 			input: `FloatProvider<float>`,
 			rule:  ruleGenericType,
