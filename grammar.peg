@@ -1,9 +1,10 @@
 package main
 
 type MCDocParser Peg {
+	StatementBuilder
 }
 
-Start <- _ Statement* _ !.
+Start <- { p.Init() } _ Statement* _ !. { p.PrintDebug() }
 
 Statement <- (Attribute* _ (
 	UseStmt /
@@ -13,21 +14,24 @@ Statement <- (Attribute* _ (
 	DispatchStmt
 )) _
 
-UseStmt <- 'use' _ Path
-Path <- DoubleColon? PathSegment (DoubleColon PathSegment)*
-PathSegment <- ('super' / Identifier)
+UseStmt <- 'use' _ Path { p.PopPathAndAddUseStatement() }
+Path <- DoubleColon PathSegments { p.BuildPathFromSegments(true) }
+     / PathSegments { p.BuildPathFromSegments(false) }
+PathSegments <- PathSegment (DoubleColon PathSegment)*
+PathSegment <- 'super' { p.PushSuperKeyword() }
+            / Identifier
 
 TypeAlias <- 'type' _ TypeName _ EQUALS Type
 TypeName <- (GenericType / Identifier)
 
-StructDef <- 'struct' _ Identifier _ LBRACE FieldList? RBRACE
+StructDef <- 'struct' _ Identifier _ LBRACE { p.BeginStruct() } FieldList? RBRACE { p.EndStruct() } { p.PopStructAndAddStatement() }
 FieldList <- FieldOrSpread (COMMA FieldOrSpread)* COMMA?
 FieldOrSpread <- SpreadField / Field
-Field <- Attribute* _ (ComputedField / NamedField)
+Field <- Attribute* _ { p.BeginField() } (ComputedField / NamedField) { p.EndField() }
 ComputedField <- LBRACKET Type RBRACKET QUESTION? COLON Type
-NamedField <- FieldName COLON Type
+NamedField <- FieldName { p.AddFieldColon() } COLON Type
 SpreadField <- Attribute* _ SPREAD Type
-FieldName <- Identifier QUESTION?
+FieldName <- Identifier QUESTION? { p.MarkFieldOptional() }
 
 EnumDef <- 'enum' _ LPAREN Type RPAREN Identifier _ LBRACE EnumValueList? RBRACE
 EnumValueList <- EnumValue (COMMA EnumValue)* COMMA?
@@ -90,10 +94,10 @@ ArrayLiteral <- LBRACKET (AttributeValue (COMMA AttributeValue)*)? RBRACKET
 Comment <- '//' (!EOL .)* (EOL / !.)
 DocComment <- '///' (!EOL .)* (EOL / !.)
 
-Identifier <- [a-zA-Z_][a-zA-Z0-9_]* _
-String <- '"' (!'"' .)* '"' _
-Number <- '-'? [0-9]+ ('.' [0-9]+)? _
-Boolean <- ('true' / 'false') _
+Identifier <- < [a-zA-Z_][a-zA-Z0-9_]* > _ { p.PushIdentifier(buffer[begin:end]) }
+String <- < '"' (!'"' .)* '"' > _ { p.PushString(buffer[begin:end]) }
+Number <- < '-'? [0-9]+ ('.' [0-9]+)? > _ { p.PushNumber(buffer[begin:end]) }
+Boolean <- < ('true' / 'false') > _ { p.PushBoolean(buffer[begin:end]) }
 
 # Separator tokens with optional trailing whitespace
 LBRACE <- '{' _

@@ -22,6 +22,7 @@ const (
 	ruleStatement
 	ruleUseStmt
 	rulePath
+	rulePathSegments
 	rulePathSegment
 	ruleTypeAlias
 	ruleTypeName
@@ -99,6 +100,24 @@ const (
 	ruleSingleColon
 	rule_
 	ruleEOL
+	ruleAction0
+	ruleAction1
+	ruleAction2
+	ruleAction3
+	ruleAction4
+	ruleAction5
+	ruleAction6
+	ruleAction7
+	ruleAction8
+	ruleAction9
+	ruleAction10
+	ruleAction11
+	ruleAction12
+	rulePegText
+	ruleAction13
+	ruleAction14
+	ruleAction15
+	ruleAction16
 )
 
 var rul3s = [...]string{
@@ -107,6 +126,7 @@ var rul3s = [...]string{
 	"Statement",
 	"UseStmt",
 	"Path",
+	"PathSegments",
 	"PathSegment",
 	"TypeAlias",
 	"TypeName",
@@ -184,6 +204,24 @@ var rul3s = [...]string{
 	"SingleColon",
 	"_",
 	"EOL",
+	"Action0",
+	"Action1",
+	"Action2",
+	"Action3",
+	"Action4",
+	"Action5",
+	"Action6",
+	"Action7",
+	"Action8",
+	"Action9",
+	"Action10",
+	"Action11",
+	"Action12",
+	"PegText",
+	"Action13",
+	"Action14",
+	"Action15",
+	"Action16",
 }
 
 type token32 struct {
@@ -296,9 +334,11 @@ func (t *tokens32) Tokens() []token32 {
 }
 
 type MCDocParser struct {
+	StatementBuilder
+
 	Buffer string
 	buffer []rune
-	rules  [82]func() bool
+	rules  [101]func() bool
 	parse  func(rule ...int) error
 	reset  func()
 	Pretty bool
@@ -391,6 +431,55 @@ func (p *MCDocParser) SprintSyntaxTree() string {
 	return bldr.String()
 }
 
+func (p *MCDocParser) Execute() {
+	buffer, _buffer, text, begin, end := p.Buffer, p.buffer, "", 0, 0
+	for _, token := range p.Tokens() {
+		switch token.pegRule {
+
+		case rulePegText:
+			begin, end = int(token.begin), int(token.end)
+			text = string(_buffer[begin:end])
+
+		case ruleAction0:
+			p.Init()
+		case ruleAction1:
+			p.PrintDebug()
+		case ruleAction2:
+			p.PopPathAndAddUseStatement()
+		case ruleAction3:
+			p.BuildPathFromSegments(true)
+		case ruleAction4:
+			p.BuildPathFromSegments(false)
+		case ruleAction5:
+			p.PushSuperKeyword()
+		case ruleAction6:
+			p.BeginStruct()
+		case ruleAction7:
+			p.EndStruct()
+		case ruleAction8:
+			p.PopStructAndAddStatement()
+		case ruleAction9:
+			p.BeginField()
+		case ruleAction10:
+			p.EndField()
+		case ruleAction11:
+			p.AddFieldColon()
+		case ruleAction12:
+			p.MarkFieldOptional()
+		case ruleAction13:
+			p.PushIdentifier(buffer[begin:end])
+		case ruleAction14:
+			p.PushString(buffer[begin:end])
+		case ruleAction15:
+			p.PushNumber(buffer[begin:end])
+		case ruleAction16:
+			p.PushBoolean(buffer[begin:end])
+
+		}
+	}
+	_, _, _, _, _ = buffer, _buffer, text, begin, end
+}
+
 func Pretty(pretty bool) func(*MCDocParser) error {
 	return func(p *MCDocParser) error {
 		p.Pretty = pretty
@@ -478,11 +567,14 @@ func (p *MCDocParser) Init(options ...func(*MCDocParser) error) error {
 
 	_rules = [...]func() bool{
 		nil,
-		/* 0 Start <- <(_ Statement* _ !.)> */
+		/* 0 Start <- <(Action0 _ Statement* _ !. Action1)> */
 		func() bool {
 			position0, tokenIndex0 := position, tokenIndex
 			{
 				position1 := position
+				if !_rules[ruleAction0]() {
+					goto l0
+				}
 				if !_rules[rule_]() {
 					goto l0
 				}
@@ -507,6 +599,9 @@ func (p *MCDocParser) Init(options ...func(*MCDocParser) error) error {
 					goto l0
 				l4:
 					position, tokenIndex = position4, tokenIndex4
+				}
+				if !_rules[ruleAction1]() {
+					goto l0
 				}
 				add(ruleStart, position1)
 			}
@@ -574,7 +669,7 @@ func (p *MCDocParser) Init(options ...func(*MCDocParser) error) error {
 			position, tokenIndex = position5, tokenIndex5
 			return false
 		},
-		/* 2 UseStmt <- <('u' 's' 'e' _ Path)> */
+		/* 2 UseStmt <- <('u' 's' 'e' _ Path Action2)> */
 		func() bool {
 			position14, tokenIndex14 := position, tokenIndex
 			{
@@ -597,6 +692,9 @@ func (p *MCDocParser) Init(options ...func(*MCDocParser) error) error {
 				if !_rules[rulePath]() {
 					goto l14
 				}
+				if !_rules[ruleAction2]() {
+					goto l14
+				}
 				add(ruleUseStmt, position15)
 			}
 			return true
@@ -604,7 +702,7 @@ func (p *MCDocParser) Init(options ...func(*MCDocParser) error) error {
 			position, tokenIndex = position14, tokenIndex14
 			return false
 		},
-		/* 3 Path <- <(DoubleColon? PathSegment (DoubleColon PathSegment)*)> */
+		/* 3 Path <- <((DoubleColon PathSegments Action3) / (PathSegments Action4))> */
 		func() bool {
 			position16, tokenIndex16 := position, tokenIndex
 			{
@@ -612,29 +710,25 @@ func (p *MCDocParser) Init(options ...func(*MCDocParser) error) error {
 				{
 					position18, tokenIndex18 := position, tokenIndex
 					if !_rules[ruleDoubleColon]() {
-						goto l18
+						goto l19
 					}
-					goto l19
-				l18:
+					if !_rules[rulePathSegments]() {
+						goto l19
+					}
+					if !_rules[ruleAction3]() {
+						goto l19
+					}
+					goto l18
+				l19:
 					position, tokenIndex = position18, tokenIndex18
-				}
-			l19:
-				if !_rules[rulePathSegment]() {
-					goto l16
-				}
-			l20:
-				{
-					position21, tokenIndex21 := position, tokenIndex
-					if !_rules[ruleDoubleColon]() {
-						goto l21
+					if !_rules[rulePathSegments]() {
+						goto l16
 					}
-					if !_rules[rulePathSegment]() {
-						goto l21
+					if !_rules[ruleAction4]() {
+						goto l16
 					}
-					goto l20
-				l21:
-					position, tokenIndex = position21, tokenIndex21
 				}
+			l18:
 				add(rulePath, position17)
 			}
 			return true
@@ -642,1116 +736,1152 @@ func (p *MCDocParser) Init(options ...func(*MCDocParser) error) error {
 			position, tokenIndex = position16, tokenIndex16
 			return false
 		},
-		/* 4 PathSegment <- <(('s' 'u' 'p' 'e' 'r') / Identifier)> */
+		/* 4 PathSegments <- <(PathSegment (DoubleColon PathSegment)*)> */
 		func() bool {
-			position22, tokenIndex22 := position, tokenIndex
+			position20, tokenIndex20 := position, tokenIndex
 			{
-				position23 := position
+				position21 := position
+				if !_rules[rulePathSegment]() {
+					goto l20
+				}
+			l22:
 				{
-					position24, tokenIndex24 := position, tokenIndex
+					position23, tokenIndex23 := position, tokenIndex
+					if !_rules[ruleDoubleColon]() {
+						goto l23
+					}
+					if !_rules[rulePathSegment]() {
+						goto l23
+					}
+					goto l22
+				l23:
+					position, tokenIndex = position23, tokenIndex23
+				}
+				add(rulePathSegments, position21)
+			}
+			return true
+		l20:
+			position, tokenIndex = position20, tokenIndex20
+			return false
+		},
+		/* 5 PathSegment <- <(('s' 'u' 'p' 'e' 'r' Action5) / Identifier)> */
+		func() bool {
+			position24, tokenIndex24 := position, tokenIndex
+			{
+				position25 := position
+				{
+					position26, tokenIndex26 := position, tokenIndex
 					if buffer[position] != rune('s') {
-						goto l25
+						goto l27
 					}
 					position++
 					if buffer[position] != rune('u') {
-						goto l25
+						goto l27
 					}
 					position++
 					if buffer[position] != rune('p') {
-						goto l25
+						goto l27
 					}
 					position++
 					if buffer[position] != rune('e') {
-						goto l25
+						goto l27
 					}
 					position++
 					if buffer[position] != rune('r') {
-						goto l25
+						goto l27
 					}
 					position++
-					goto l24
-				l25:
-					position, tokenIndex = position24, tokenIndex24
+					if !_rules[ruleAction5]() {
+						goto l27
+					}
+					goto l26
+				l27:
+					position, tokenIndex = position26, tokenIndex26
 					if !_rules[ruleIdentifier]() {
-						goto l22
+						goto l24
 					}
 				}
-			l24:
-				add(rulePathSegment, position23)
+			l26:
+				add(rulePathSegment, position25)
 			}
 			return true
-		l22:
-			position, tokenIndex = position22, tokenIndex22
+		l24:
+			position, tokenIndex = position24, tokenIndex24
 			return false
 		},
-		/* 5 TypeAlias <- <('t' 'y' 'p' 'e' _ TypeName _ EQUALS Type)> */
-		func() bool {
-			position26, tokenIndex26 := position, tokenIndex
-			{
-				position27 := position
-				if buffer[position] != rune('t') {
-					goto l26
-				}
-				position++
-				if buffer[position] != rune('y') {
-					goto l26
-				}
-				position++
-				if buffer[position] != rune('p') {
-					goto l26
-				}
-				position++
-				if buffer[position] != rune('e') {
-					goto l26
-				}
-				position++
-				if !_rules[rule_]() {
-					goto l26
-				}
-				if !_rules[ruleTypeName]() {
-					goto l26
-				}
-				if !_rules[rule_]() {
-					goto l26
-				}
-				if !_rules[ruleEQUALS]() {
-					goto l26
-				}
-				if !_rules[ruleType]() {
-					goto l26
-				}
-				add(ruleTypeAlias, position27)
-			}
-			return true
-		l26:
-			position, tokenIndex = position26, tokenIndex26
-			return false
-		},
-		/* 6 TypeName <- <(GenericType / Identifier)> */
+		/* 6 TypeAlias <- <('t' 'y' 'p' 'e' _ TypeName _ EQUALS Type)> */
 		func() bool {
 			position28, tokenIndex28 := position, tokenIndex
 			{
 				position29 := position
-				{
-					position30, tokenIndex30 := position, tokenIndex
-					if !_rules[ruleGenericType]() {
-						goto l31
-					}
-					goto l30
-				l31:
-					position, tokenIndex = position30, tokenIndex30
-					if !_rules[ruleIdentifier]() {
-						goto l28
-					}
+				if buffer[position] != rune('t') {
+					goto l28
 				}
-			l30:
-				add(ruleTypeName, position29)
+				position++
+				if buffer[position] != rune('y') {
+					goto l28
+				}
+				position++
+				if buffer[position] != rune('p') {
+					goto l28
+				}
+				position++
+				if buffer[position] != rune('e') {
+					goto l28
+				}
+				position++
+				if !_rules[rule_]() {
+					goto l28
+				}
+				if !_rules[ruleTypeName]() {
+					goto l28
+				}
+				if !_rules[rule_]() {
+					goto l28
+				}
+				if !_rules[ruleEQUALS]() {
+					goto l28
+				}
+				if !_rules[ruleType]() {
+					goto l28
+				}
+				add(ruleTypeAlias, position29)
 			}
 			return true
 		l28:
 			position, tokenIndex = position28, tokenIndex28
 			return false
 		},
-		/* 7 StructDef <- <('s' 't' 'r' 'u' 'c' 't' _ Identifier _ LBRACE FieldList? RBRACE)> */
+		/* 7 TypeName <- <(GenericType / Identifier)> */
 		func() bool {
-			position32, tokenIndex32 := position, tokenIndex
+			position30, tokenIndex30 := position, tokenIndex
 			{
-				position33 := position
-				if buffer[position] != rune('s') {
+				position31 := position
+				{
+					position32, tokenIndex32 := position, tokenIndex
+					if !_rules[ruleGenericType]() {
+						goto l33
+					}
 					goto l32
+				l33:
+					position, tokenIndex = position32, tokenIndex32
+					if !_rules[ruleIdentifier]() {
+						goto l30
+					}
+				}
+			l32:
+				add(ruleTypeName, position31)
+			}
+			return true
+		l30:
+			position, tokenIndex = position30, tokenIndex30
+			return false
+		},
+		/* 8 StructDef <- <('s' 't' 'r' 'u' 'c' 't' _ Identifier _ LBRACE Action6 FieldList? RBRACE Action7 Action8)> */
+		func() bool {
+			position34, tokenIndex34 := position, tokenIndex
+			{
+				position35 := position
+				if buffer[position] != rune('s') {
+					goto l34
 				}
 				position++
 				if buffer[position] != rune('t') {
-					goto l32
+					goto l34
 				}
 				position++
 				if buffer[position] != rune('r') {
-					goto l32
+					goto l34
 				}
 				position++
 				if buffer[position] != rune('u') {
-					goto l32
+					goto l34
 				}
 				position++
 				if buffer[position] != rune('c') {
-					goto l32
+					goto l34
 				}
 				position++
 				if buffer[position] != rune('t') {
-					goto l32
+					goto l34
 				}
 				position++
 				if !_rules[rule_]() {
-					goto l32
+					goto l34
 				}
 				if !_rules[ruleIdentifier]() {
-					goto l32
+					goto l34
 				}
 				if !_rules[rule_]() {
-					goto l32
+					goto l34
 				}
 				if !_rules[ruleLBRACE]() {
-					goto l32
+					goto l34
+				}
+				if !_rules[ruleAction6]() {
+					goto l34
 				}
 				{
-					position34, tokenIndex34 := position, tokenIndex
+					position36, tokenIndex36 := position, tokenIndex
 					if !_rules[ruleFieldList]() {
-						goto l34
+						goto l36
 					}
-					goto l35
-				l34:
-					position, tokenIndex = position34, tokenIndex34
+					goto l37
+				l36:
+					position, tokenIndex = position36, tokenIndex36
 				}
-			l35:
+			l37:
 				if !_rules[ruleRBRACE]() {
-					goto l32
+					goto l34
 				}
-				add(ruleStructDef, position33)
+				if !_rules[ruleAction7]() {
+					goto l34
+				}
+				if !_rules[ruleAction8]() {
+					goto l34
+				}
+				add(ruleStructDef, position35)
 			}
 			return true
-		l32:
-			position, tokenIndex = position32, tokenIndex32
+		l34:
+			position, tokenIndex = position34, tokenIndex34
 			return false
 		},
-		/* 8 FieldList <- <(FieldOrSpread (COMMA FieldOrSpread)* COMMA?)> */
+		/* 9 FieldList <- <(FieldOrSpread (COMMA FieldOrSpread)* COMMA?)> */
 		func() bool {
-			position36, tokenIndex36 := position, tokenIndex
+			position38, tokenIndex38 := position, tokenIndex
 			{
-				position37 := position
+				position39 := position
 				if !_rules[ruleFieldOrSpread]() {
-					goto l36
+					goto l38
 				}
-			l38:
+			l40:
 				{
-					position39, tokenIndex39 := position, tokenIndex
+					position41, tokenIndex41 := position, tokenIndex
 					if !_rules[ruleCOMMA]() {
-						goto l39
+						goto l41
 					}
 					if !_rules[ruleFieldOrSpread]() {
-						goto l39
+						goto l41
 					}
-					goto l38
-				l39:
-					position, tokenIndex = position39, tokenIndex39
+					goto l40
+				l41:
+					position, tokenIndex = position41, tokenIndex41
 				}
 				{
-					position40, tokenIndex40 := position, tokenIndex
+					position42, tokenIndex42 := position, tokenIndex
 					if !_rules[ruleCOMMA]() {
-						goto l40
-					}
-					goto l41
-				l40:
-					position, tokenIndex = position40, tokenIndex40
-				}
-			l41:
-				add(ruleFieldList, position37)
-			}
-			return true
-		l36:
-			position, tokenIndex = position36, tokenIndex36
-			return false
-		},
-		/* 9 FieldOrSpread <- <(SpreadField / Field)> */
-		func() bool {
-			position42, tokenIndex42 := position, tokenIndex
-			{
-				position43 := position
-				{
-					position44, tokenIndex44 := position, tokenIndex
-					if !_rules[ruleSpreadField]() {
-						goto l45
-					}
-					goto l44
-				l45:
-					position, tokenIndex = position44, tokenIndex44
-					if !_rules[ruleField]() {
 						goto l42
 					}
+					goto l43
+				l42:
+					position, tokenIndex = position42, tokenIndex42
 				}
-			l44:
-				add(ruleFieldOrSpread, position43)
+			l43:
+				add(ruleFieldList, position39)
 			}
 			return true
-		l42:
-			position, tokenIndex = position42, tokenIndex42
+		l38:
+			position, tokenIndex = position38, tokenIndex38
 			return false
 		},
-		/* 10 Field <- <(Attribute* _ (ComputedField / NamedField))> */
+		/* 10 FieldOrSpread <- <(SpreadField / Field)> */
 		func() bool {
-			position46, tokenIndex46 := position, tokenIndex
+			position44, tokenIndex44 := position, tokenIndex
 			{
-				position47 := position
-			l48:
+				position45 := position
 				{
-					position49, tokenIndex49 := position, tokenIndex
-					if !_rules[ruleAttribute]() {
-						goto l49
+					position46, tokenIndex46 := position, tokenIndex
+					if !_rules[ruleSpreadField]() {
+						goto l47
 					}
-					goto l48
-				l49:
-					position, tokenIndex = position49, tokenIndex49
-				}
-				if !_rules[rule_]() {
 					goto l46
+				l47:
+					position, tokenIndex = position46, tokenIndex46
+					if !_rules[ruleField]() {
+						goto l44
+					}
 				}
+			l46:
+				add(ruleFieldOrSpread, position45)
+			}
+			return true
+		l44:
+			position, tokenIndex = position44, tokenIndex44
+			return false
+		},
+		/* 11 Field <- <(Attribute* _ Action9 (ComputedField / NamedField) Action10)> */
+		func() bool {
+			position48, tokenIndex48 := position, tokenIndex
+			{
+				position49 := position
+			l50:
 				{
-					position50, tokenIndex50 := position, tokenIndex
-					if !_rules[ruleComputedField]() {
+					position51, tokenIndex51 := position, tokenIndex
+					if !_rules[ruleAttribute]() {
 						goto l51
 					}
 					goto l50
 				l51:
-					position, tokenIndex = position50, tokenIndex50
-					if !_rules[ruleNamedField]() {
-						goto l46
-					}
+					position, tokenIndex = position51, tokenIndex51
 				}
-			l50:
-				add(ruleField, position47)
-			}
-			return true
-		l46:
-			position, tokenIndex = position46, tokenIndex46
-			return false
-		},
-		/* 11 ComputedField <- <(LBRACKET Type RBRACKET QUESTION? COLON Type)> */
-		func() bool {
-			position52, tokenIndex52 := position, tokenIndex
-			{
-				position53 := position
-				if !_rules[ruleLBRACKET]() {
-					goto l52
+				if !_rules[rule_]() {
+					goto l48
 				}
-				if !_rules[ruleType]() {
-					goto l52
-				}
-				if !_rules[ruleRBRACKET]() {
-					goto l52
+				if !_rules[ruleAction9]() {
+					goto l48
 				}
 				{
-					position54, tokenIndex54 := position, tokenIndex
-					if !_rules[ruleQUESTION]() {
-						goto l54
+					position52, tokenIndex52 := position, tokenIndex
+					if !_rules[ruleComputedField]() {
+						goto l53
 					}
-					goto l55
-				l54:
-					position, tokenIndex = position54, tokenIndex54
-				}
-			l55:
-				if !_rules[ruleCOLON]() {
 					goto l52
+				l53:
+					position, tokenIndex = position52, tokenIndex52
+					if !_rules[ruleNamedField]() {
+						goto l48
+					}
 				}
-				if !_rules[ruleType]() {
-					goto l52
+			l52:
+				if !_rules[ruleAction10]() {
+					goto l48
 				}
-				add(ruleComputedField, position53)
+				add(ruleField, position49)
 			}
 			return true
-		l52:
-			position, tokenIndex = position52, tokenIndex52
+		l48:
+			position, tokenIndex = position48, tokenIndex48
 			return false
 		},
-		/* 12 NamedField <- <(FieldName COLON Type)> */
+		/* 12 ComputedField <- <(LBRACKET Type RBRACKET QUESTION? COLON Type)> */
 		func() bool {
-			position56, tokenIndex56 := position, tokenIndex
+			position54, tokenIndex54 := position, tokenIndex
 			{
-				position57 := position
-				if !_rules[ruleFieldName]() {
-					goto l56
-				}
-				if !_rules[ruleCOLON]() {
-					goto l56
+				position55 := position
+				if !_rules[ruleLBRACKET]() {
+					goto l54
 				}
 				if !_rules[ruleType]() {
-					goto l56
+					goto l54
 				}
-				add(ruleNamedField, position57)
+				if !_rules[ruleRBRACKET]() {
+					goto l54
+				}
+				{
+					position56, tokenIndex56 := position, tokenIndex
+					if !_rules[ruleQUESTION]() {
+						goto l56
+					}
+					goto l57
+				l56:
+					position, tokenIndex = position56, tokenIndex56
+				}
+			l57:
+				if !_rules[ruleCOLON]() {
+					goto l54
+				}
+				if !_rules[ruleType]() {
+					goto l54
+				}
+				add(ruleComputedField, position55)
 			}
 			return true
-		l56:
-			position, tokenIndex = position56, tokenIndex56
+		l54:
+			position, tokenIndex = position54, tokenIndex54
 			return false
 		},
-		/* 13 SpreadField <- <(Attribute* _ SPREAD Type)> */
+		/* 13 NamedField <- <(FieldName Action11 COLON Type)> */
 		func() bool {
 			position58, tokenIndex58 := position, tokenIndex
 			{
 				position59 := position
-			l60:
-				{
-					position61, tokenIndex61 := position, tokenIndex
-					if !_rules[ruleAttribute]() {
-						goto l61
-					}
-					goto l60
-				l61:
-					position, tokenIndex = position61, tokenIndex61
-				}
-				if !_rules[rule_]() {
+				if !_rules[ruleFieldName]() {
 					goto l58
 				}
-				if !_rules[ruleSPREAD]() {
+				if !_rules[ruleAction11]() {
+					goto l58
+				}
+				if !_rules[ruleCOLON]() {
 					goto l58
 				}
 				if !_rules[ruleType]() {
 					goto l58
 				}
-				add(ruleSpreadField, position59)
+				add(ruleNamedField, position59)
 			}
 			return true
 		l58:
 			position, tokenIndex = position58, tokenIndex58
 			return false
 		},
-		/* 14 FieldName <- <(Identifier QUESTION?)> */
+		/* 14 SpreadField <- <(Attribute* _ SPREAD Type)> */
 		func() bool {
-			position62, tokenIndex62 := position, tokenIndex
+			position60, tokenIndex60 := position, tokenIndex
 			{
-				position63 := position
-				if !_rules[ruleIdentifier]() {
-					goto l62
-				}
+				position61 := position
+			l62:
 				{
-					position64, tokenIndex64 := position, tokenIndex
-					if !_rules[ruleQUESTION]() {
-						goto l64
+					position63, tokenIndex63 := position, tokenIndex
+					if !_rules[ruleAttribute]() {
+						goto l63
 					}
-					goto l65
-				l64:
-					position, tokenIndex = position64, tokenIndex64
+					goto l62
+				l63:
+					position, tokenIndex = position63, tokenIndex63
 				}
-			l65:
-				add(ruleFieldName, position63)
+				if !_rules[rule_]() {
+					goto l60
+				}
+				if !_rules[ruleSPREAD]() {
+					goto l60
+				}
+				if !_rules[ruleType]() {
+					goto l60
+				}
+				add(ruleSpreadField, position61)
 			}
 			return true
-		l62:
-			position, tokenIndex = position62, tokenIndex62
+		l60:
+			position, tokenIndex = position60, tokenIndex60
 			return false
 		},
-		/* 15 EnumDef <- <('e' 'n' 'u' 'm' _ LPAREN Type RPAREN Identifier _ LBRACE EnumValueList? RBRACE)> */
+		/* 15 FieldName <- <(Identifier QUESTION? Action12)> */
 		func() bool {
-			position66, tokenIndex66 := position, tokenIndex
+			position64, tokenIndex64 := position, tokenIndex
 			{
-				position67 := position
+				position65 := position
+				if !_rules[ruleIdentifier]() {
+					goto l64
+				}
+				{
+					position66, tokenIndex66 := position, tokenIndex
+					if !_rules[ruleQUESTION]() {
+						goto l66
+					}
+					goto l67
+				l66:
+					position, tokenIndex = position66, tokenIndex66
+				}
+			l67:
+				if !_rules[ruleAction12]() {
+					goto l64
+				}
+				add(ruleFieldName, position65)
+			}
+			return true
+		l64:
+			position, tokenIndex = position64, tokenIndex64
+			return false
+		},
+		/* 16 EnumDef <- <('e' 'n' 'u' 'm' _ LPAREN Type RPAREN Identifier _ LBRACE EnumValueList? RBRACE)> */
+		func() bool {
+			position68, tokenIndex68 := position, tokenIndex
+			{
+				position69 := position
 				if buffer[position] != rune('e') {
-					goto l66
+					goto l68
 				}
 				position++
 				if buffer[position] != rune('n') {
-					goto l66
+					goto l68
 				}
 				position++
 				if buffer[position] != rune('u') {
-					goto l66
+					goto l68
 				}
 				position++
 				if buffer[position] != rune('m') {
-					goto l66
+					goto l68
 				}
 				position++
 				if !_rules[rule_]() {
-					goto l66
+					goto l68
 				}
 				if !_rules[ruleLPAREN]() {
-					goto l66
+					goto l68
 				}
 				if !_rules[ruleType]() {
-					goto l66
+					goto l68
 				}
 				if !_rules[ruleRPAREN]() {
-					goto l66
+					goto l68
 				}
 				if !_rules[ruleIdentifier]() {
-					goto l66
+					goto l68
 				}
 				if !_rules[rule_]() {
-					goto l66
+					goto l68
 				}
 				if !_rules[ruleLBRACE]() {
-					goto l66
+					goto l68
 				}
 				{
-					position68, tokenIndex68 := position, tokenIndex
+					position70, tokenIndex70 := position, tokenIndex
 					if !_rules[ruleEnumValueList]() {
-						goto l68
+						goto l70
 					}
-					goto l69
-				l68:
-					position, tokenIndex = position68, tokenIndex68
+					goto l71
+				l70:
+					position, tokenIndex = position70, tokenIndex70
 				}
-			l69:
+			l71:
 				if !_rules[ruleRBRACE]() {
-					goto l66
+					goto l68
 				}
-				add(ruleEnumDef, position67)
+				add(ruleEnumDef, position69)
 			}
 			return true
-		l66:
-			position, tokenIndex = position66, tokenIndex66
+		l68:
+			position, tokenIndex = position68, tokenIndex68
 			return false
 		},
-		/* 16 EnumValueList <- <(EnumValue (COMMA EnumValue)* COMMA?)> */
+		/* 17 EnumValueList <- <(EnumValue (COMMA EnumValue)* COMMA?)> */
 		func() bool {
-			position70, tokenIndex70 := position, tokenIndex
+			position72, tokenIndex72 := position, tokenIndex
 			{
-				position71 := position
+				position73 := position
 				if !_rules[ruleEnumValue]() {
-					goto l70
+					goto l72
 				}
-			l72:
+			l74:
 				{
-					position73, tokenIndex73 := position, tokenIndex
+					position75, tokenIndex75 := position, tokenIndex
 					if !_rules[ruleCOMMA]() {
-						goto l73
+						goto l75
 					}
 					if !_rules[ruleEnumValue]() {
-						goto l73
+						goto l75
 					}
-					goto l72
-				l73:
-					position, tokenIndex = position73, tokenIndex73
+					goto l74
+				l75:
+					position, tokenIndex = position75, tokenIndex75
 				}
 				{
-					position74, tokenIndex74 := position, tokenIndex
+					position76, tokenIndex76 := position, tokenIndex
 					if !_rules[ruleCOMMA]() {
-						goto l74
+						goto l76
 					}
-					goto l75
-				l74:
-					position, tokenIndex = position74, tokenIndex74
+					goto l77
+				l76:
+					position, tokenIndex = position76, tokenIndex76
 				}
-			l75:
-				add(ruleEnumValueList, position71)
+			l77:
+				add(ruleEnumValueList, position73)
 			}
 			return true
-		l70:
-			position, tokenIndex = position70, tokenIndex70
+		l72:
+			position, tokenIndex = position72, tokenIndex72
 			return false
 		},
-		/* 17 EnumValue <- <(Attribute* _ Identifier _ EQUALS String)> */
+		/* 18 EnumValue <- <(Attribute* _ Identifier _ EQUALS String)> */
 		func() bool {
-			position76, tokenIndex76 := position, tokenIndex
+			position78, tokenIndex78 := position, tokenIndex
 			{
-				position77 := position
-			l78:
+				position79 := position
+			l80:
 				{
-					position79, tokenIndex79 := position, tokenIndex
+					position81, tokenIndex81 := position, tokenIndex
 					if !_rules[ruleAttribute]() {
-						goto l79
+						goto l81
 					}
-					goto l78
-				l79:
-					position, tokenIndex = position79, tokenIndex79
+					goto l80
+				l81:
+					position, tokenIndex = position81, tokenIndex81
 				}
 				if !_rules[rule_]() {
-					goto l76
+					goto l78
 				}
 				if !_rules[ruleIdentifier]() {
-					goto l76
+					goto l78
 				}
 				if !_rules[rule_]() {
-					goto l76
+					goto l78
 				}
 				if !_rules[ruleEQUALS]() {
-					goto l76
+					goto l78
 				}
 				if !_rules[ruleString]() {
-					goto l76
+					goto l78
 				}
-				add(ruleEnumValue, position77)
+				add(ruleEnumValue, position79)
 			}
 			return true
-		l76:
-			position, tokenIndex = position76, tokenIndex76
+		l78:
+			position, tokenIndex = position78, tokenIndex78
 			return false
 		},
-		/* 18 DispatchStmt <- <('d' 'i' 's' 'p' 'a' 't' 'c' 'h' _ DispatchPath _ ('t' 'o') _ DispatchTarget)> */
-		func() bool {
-			position80, tokenIndex80 := position, tokenIndex
-			{
-				position81 := position
-				if buffer[position] != rune('d') {
-					goto l80
-				}
-				position++
-				if buffer[position] != rune('i') {
-					goto l80
-				}
-				position++
-				if buffer[position] != rune('s') {
-					goto l80
-				}
-				position++
-				if buffer[position] != rune('p') {
-					goto l80
-				}
-				position++
-				if buffer[position] != rune('a') {
-					goto l80
-				}
-				position++
-				if buffer[position] != rune('t') {
-					goto l80
-				}
-				position++
-				if buffer[position] != rune('c') {
-					goto l80
-				}
-				position++
-				if buffer[position] != rune('h') {
-					goto l80
-				}
-				position++
-				if !_rules[rule_]() {
-					goto l80
-				}
-				if !_rules[ruleDispatchPath]() {
-					goto l80
-				}
-				if !_rules[rule_]() {
-					goto l80
-				}
-				if buffer[position] != rune('t') {
-					goto l80
-				}
-				position++
-				if buffer[position] != rune('o') {
-					goto l80
-				}
-				position++
-				if !_rules[rule_]() {
-					goto l80
-				}
-				if !_rules[ruleDispatchTarget]() {
-					goto l80
-				}
-				add(ruleDispatchStmt, position81)
-			}
-			return true
-		l80:
-			position, tokenIndex = position80, tokenIndex80
-			return false
-		},
-		/* 19 DispatchPath <- <(Identifier COLON ResourcePath LBRACKET DispatchKeyList RBRACKET (LT GenericTypeParams RT)?)> */
+		/* 19 DispatchStmt <- <('d' 'i' 's' 'p' 'a' 't' 'c' 'h' _ DispatchPath _ ('t' 'o') _ DispatchTarget)> */
 		func() bool {
 			position82, tokenIndex82 := position, tokenIndex
 			{
 				position83 := position
-				if !_rules[ruleIdentifier]() {
+				if buffer[position] != rune('d') {
 					goto l82
 				}
-				if !_rules[ruleCOLON]() {
+				position++
+				if buffer[position] != rune('i') {
 					goto l82
 				}
-				if !_rules[ruleResourcePath]() {
+				position++
+				if buffer[position] != rune('s') {
 					goto l82
 				}
-				if !_rules[ruleLBRACKET]() {
+				position++
+				if buffer[position] != rune('p') {
 					goto l82
 				}
-				if !_rules[ruleDispatchKeyList]() {
+				position++
+				if buffer[position] != rune('a') {
 					goto l82
 				}
-				if !_rules[ruleRBRACKET]() {
+				position++
+				if buffer[position] != rune('t') {
 					goto l82
 				}
-				{
-					position84, tokenIndex84 := position, tokenIndex
-					if !_rules[ruleLT]() {
-						goto l84
-					}
-					if !_rules[ruleGenericTypeParams]() {
-						goto l84
-					}
-					if !_rules[ruleRT]() {
-						goto l84
-					}
-					goto l85
-				l84:
-					position, tokenIndex = position84, tokenIndex84
+				position++
+				if buffer[position] != rune('c') {
+					goto l82
 				}
-			l85:
-				add(ruleDispatchPath, position83)
+				position++
+				if buffer[position] != rune('h') {
+					goto l82
+				}
+				position++
+				if !_rules[rule_]() {
+					goto l82
+				}
+				if !_rules[ruleDispatchPath]() {
+					goto l82
+				}
+				if !_rules[rule_]() {
+					goto l82
+				}
+				if buffer[position] != rune('t') {
+					goto l82
+				}
+				position++
+				if buffer[position] != rune('o') {
+					goto l82
+				}
+				position++
+				if !_rules[rule_]() {
+					goto l82
+				}
+				if !_rules[ruleDispatchTarget]() {
+					goto l82
+				}
+				add(ruleDispatchStmt, position83)
 			}
 			return true
 		l82:
 			position, tokenIndex = position82, tokenIndex82
 			return false
 		},
-		/* 20 DispatchKeyList <- <(DispatchKey (COMMA DispatchKey)* COMMA?)> */
+		/* 20 DispatchPath <- <(Identifier COLON ResourcePath LBRACKET DispatchKeyList RBRACKET (LT GenericTypeParams RT)?)> */
 		func() bool {
-			position86, tokenIndex86 := position, tokenIndex
+			position84, tokenIndex84 := position, tokenIndex
 			{
-				position87 := position
-				if !_rules[ruleDispatchKey]() {
-					goto l86
+				position85 := position
+				if !_rules[ruleIdentifier]() {
+					goto l84
 				}
-			l88:
+				if !_rules[ruleCOLON]() {
+					goto l84
+				}
+				if !_rules[ruleResourcePath]() {
+					goto l84
+				}
+				if !_rules[ruleLBRACKET]() {
+					goto l84
+				}
+				if !_rules[ruleDispatchKeyList]() {
+					goto l84
+				}
+				if !_rules[ruleRBRACKET]() {
+					goto l84
+				}
 				{
-					position89, tokenIndex89 := position, tokenIndex
+					position86, tokenIndex86 := position, tokenIndex
+					if !_rules[ruleLT]() {
+						goto l86
+					}
+					if !_rules[ruleGenericTypeParams]() {
+						goto l86
+					}
+					if !_rules[ruleRT]() {
+						goto l86
+					}
+					goto l87
+				l86:
+					position, tokenIndex = position86, tokenIndex86
+				}
+			l87:
+				add(ruleDispatchPath, position85)
+			}
+			return true
+		l84:
+			position, tokenIndex = position84, tokenIndex84
+			return false
+		},
+		/* 21 DispatchKeyList <- <(DispatchKey (COMMA DispatchKey)* COMMA?)> */
+		func() bool {
+			position88, tokenIndex88 := position, tokenIndex
+			{
+				position89 := position
+				if !_rules[ruleDispatchKey]() {
+					goto l88
+				}
+			l90:
+				{
+					position91, tokenIndex91 := position, tokenIndex
 					if !_rules[ruleCOMMA]() {
-						goto l89
+						goto l91
 					}
 					if !_rules[ruleDispatchKey]() {
-						goto l89
+						goto l91
 					}
-					goto l88
-				l89:
-					position, tokenIndex = position89, tokenIndex89
+					goto l90
+				l91:
+					position, tokenIndex = position91, tokenIndex91
 				}
 				{
-					position90, tokenIndex90 := position, tokenIndex
+					position92, tokenIndex92 := position, tokenIndex
 					if !_rules[ruleCOMMA]() {
-						goto l90
-					}
-					goto l91
-				l90:
-					position, tokenIndex = position90, tokenIndex90
-				}
-			l91:
-				add(ruleDispatchKeyList, position87)
-			}
-			return true
-		l86:
-			position, tokenIndex = position86, tokenIndex86
-			return false
-		},
-		/* 21 DispatchKey <- <(StaticIndexKey / String / Identifier)> */
-		func() bool {
-			position92, tokenIndex92 := position, tokenIndex
-			{
-				position93 := position
-				{
-					position94, tokenIndex94 := position, tokenIndex
-					if !_rules[ruleStaticIndexKey]() {
-						goto l95
-					}
-					goto l94
-				l95:
-					position, tokenIndex = position94, tokenIndex94
-					if !_rules[ruleString]() {
-						goto l96
-					}
-					goto l94
-				l96:
-					position, tokenIndex = position94, tokenIndex94
-					if !_rules[ruleIdentifier]() {
 						goto l92
 					}
+					goto l93
+				l92:
+					position, tokenIndex = position92, tokenIndex92
 				}
-			l94:
-				add(ruleDispatchKey, position93)
+			l93:
+				add(ruleDispatchKeyList, position89)
 			}
 			return true
-		l92:
-			position, tokenIndex = position92, tokenIndex92
+		l88:
+			position, tokenIndex = position88, tokenIndex88
 			return false
 		},
-		/* 22 DispatchTarget <- <(('s' 't' 'r' 'u' 'c' 't' _ Identifier _ LBRACE FieldList? RBRACE) / Type)> */
+		/* 22 DispatchKey <- <(StaticIndexKey / String / Identifier)> */
 		func() bool {
-			position97, tokenIndex97 := position, tokenIndex
+			position94, tokenIndex94 := position, tokenIndex
 			{
-				position98 := position
+				position95 := position
 				{
-					position99, tokenIndex99 := position, tokenIndex
+					position96, tokenIndex96 := position, tokenIndex
+					if !_rules[ruleStaticIndexKey]() {
+						goto l97
+					}
+					goto l96
+				l97:
+					position, tokenIndex = position96, tokenIndex96
+					if !_rules[ruleString]() {
+						goto l98
+					}
+					goto l96
+				l98:
+					position, tokenIndex = position96, tokenIndex96
+					if !_rules[ruleIdentifier]() {
+						goto l94
+					}
+				}
+			l96:
+				add(ruleDispatchKey, position95)
+			}
+			return true
+		l94:
+			position, tokenIndex = position94, tokenIndex94
+			return false
+		},
+		/* 23 DispatchTarget <- <(('s' 't' 'r' 'u' 'c' 't' _ Identifier _ LBRACE FieldList? RBRACE) / Type)> */
+		func() bool {
+			position99, tokenIndex99 := position, tokenIndex
+			{
+				position100 := position
+				{
+					position101, tokenIndex101 := position, tokenIndex
 					if buffer[position] != rune('s') {
-						goto l100
+						goto l102
 					}
 					position++
 					if buffer[position] != rune('t') {
-						goto l100
+						goto l102
 					}
 					position++
 					if buffer[position] != rune('r') {
-						goto l100
+						goto l102
 					}
 					position++
 					if buffer[position] != rune('u') {
-						goto l100
+						goto l102
 					}
 					position++
 					if buffer[position] != rune('c') {
-						goto l100
+						goto l102
 					}
 					position++
 					if buffer[position] != rune('t') {
-						goto l100
+						goto l102
 					}
 					position++
 					if !_rules[rule_]() {
-						goto l100
+						goto l102
 					}
 					if !_rules[ruleIdentifier]() {
-						goto l100
+						goto l102
 					}
 					if !_rules[rule_]() {
-						goto l100
+						goto l102
 					}
 					if !_rules[ruleLBRACE]() {
-						goto l100
+						goto l102
 					}
 					{
-						position101, tokenIndex101 := position, tokenIndex
+						position103, tokenIndex103 := position, tokenIndex
 						if !_rules[ruleFieldList]() {
-							goto l101
+							goto l103
 						}
-						goto l102
-					l101:
-						position, tokenIndex = position101, tokenIndex101
+						goto l104
+					l103:
+						position, tokenIndex = position103, tokenIndex103
 					}
-				l102:
+				l104:
 					if !_rules[ruleRBRACE]() {
-						goto l100
+						goto l102
 					}
-					goto l99
-				l100:
-					position, tokenIndex = position99, tokenIndex99
+					goto l101
+				l102:
+					position, tokenIndex = position101, tokenIndex101
 					if !_rules[ruleType]() {
-						goto l97
+						goto l99
 					}
 				}
-			l99:
-				add(ruleDispatchTarget, position98)
+			l101:
+				add(ruleDispatchTarget, position100)
 			}
 			return true
-		l97:
-			position, tokenIndex = position97, tokenIndex97
+		l99:
+			position, tokenIndex = position99, tokenIndex99
 			return false
 		},
-		/* 23 SpreadStruct <- <(SPREAD ('s' 't' 'r' 'u' 'c' 't') _ Identifier _ LBRACE FieldList? RBRACE)> */
+		/* 24 SpreadStruct <- <(SPREAD ('s' 't' 'r' 'u' 'c' 't') _ Identifier _ LBRACE FieldList? RBRACE)> */
 		nil,
-		/* 24 Type <- <(UnionType / AttributedType / ArrayType / StructType / ConstrainedType / GenericType / PrimitiveType / ReferenceType / LiteralType)> */
+		/* 25 Type <- <(UnionType / AttributedType / ArrayType / StructType / ConstrainedType / GenericType / PrimitiveType / ReferenceType / LiteralType)> */
 		func() bool {
-			position104, tokenIndex104 := position, tokenIndex
+			position106, tokenIndex106 := position, tokenIndex
 			{
-				position105 := position
+				position107 := position
 				{
-					position106, tokenIndex106 := position, tokenIndex
+					position108, tokenIndex108 := position, tokenIndex
 					if !_rules[ruleUnionType]() {
-						goto l107
-					}
-					goto l106
-				l107:
-					position, tokenIndex = position106, tokenIndex106
-					if !_rules[ruleAttributedType]() {
-						goto l108
-					}
-					goto l106
-				l108:
-					position, tokenIndex = position106, tokenIndex106
-					if !_rules[ruleArrayType]() {
 						goto l109
 					}
-					goto l106
+					goto l108
 				l109:
-					position, tokenIndex = position106, tokenIndex106
-					if !_rules[ruleStructType]() {
+					position, tokenIndex = position108, tokenIndex108
+					if !_rules[ruleAttributedType]() {
 						goto l110
 					}
-					goto l106
+					goto l108
 				l110:
-					position, tokenIndex = position106, tokenIndex106
-					if !_rules[ruleConstrainedType]() {
+					position, tokenIndex = position108, tokenIndex108
+					if !_rules[ruleArrayType]() {
 						goto l111
 					}
-					goto l106
+					goto l108
 				l111:
-					position, tokenIndex = position106, tokenIndex106
-					if !_rules[ruleGenericType]() {
+					position, tokenIndex = position108, tokenIndex108
+					if !_rules[ruleStructType]() {
 						goto l112
 					}
-					goto l106
+					goto l108
 				l112:
-					position, tokenIndex = position106, tokenIndex106
-					if !_rules[rulePrimitiveType]() {
+					position, tokenIndex = position108, tokenIndex108
+					if !_rules[ruleConstrainedType]() {
 						goto l113
 					}
-					goto l106
+					goto l108
 				l113:
-					position, tokenIndex = position106, tokenIndex106
-					if !_rules[ruleReferenceType]() {
+					position, tokenIndex = position108, tokenIndex108
+					if !_rules[ruleGenericType]() {
 						goto l114
 					}
-					goto l106
+					goto l108
 				l114:
-					position, tokenIndex = position106, tokenIndex106
+					position, tokenIndex = position108, tokenIndex108
+					if !_rules[rulePrimitiveType]() {
+						goto l115
+					}
+					goto l108
+				l115:
+					position, tokenIndex = position108, tokenIndex108
+					if !_rules[ruleReferenceType]() {
+						goto l116
+					}
+					goto l108
+				l116:
+					position, tokenIndex = position108, tokenIndex108
 					if !_rules[ruleLiteralType]() {
-						goto l104
+						goto l106
 					}
 				}
-			l106:
-				add(ruleType, position105)
+			l108:
+				add(ruleType, position107)
 			}
 			return true
-		l104:
-			position, tokenIndex = position104, tokenIndex104
+		l106:
+			position, tokenIndex = position106, tokenIndex106
 			return false
 		},
-		/* 25 AttributedType <- <(Attribute+ _ (UnionType / ArrayType / ConstrainedType / StructType / GenericType / PrimitiveType / ReferenceType / LiteralType))> */
+		/* 26 AttributedType <- <(Attribute+ _ (UnionType / ArrayType / ConstrainedType / StructType / GenericType / PrimitiveType / ReferenceType / LiteralType))> */
 		func() bool {
-			position115, tokenIndex115 := position, tokenIndex
+			position117, tokenIndex117 := position, tokenIndex
 			{
-				position116 := position
+				position118 := position
 				if !_rules[ruleAttribute]() {
-					goto l115
-				}
-			l117:
-				{
-					position118, tokenIndex118 := position, tokenIndex
-					if !_rules[ruleAttribute]() {
-						goto l118
-					}
 					goto l117
-				l118:
-					position, tokenIndex = position118, tokenIndex118
 				}
-				if !_rules[rule_]() {
-					goto l115
-				}
+			l119:
 				{
-					position119, tokenIndex119 := position, tokenIndex
-					if !_rules[ruleUnionType]() {
+					position120, tokenIndex120 := position, tokenIndex
+					if !_rules[ruleAttribute]() {
 						goto l120
 					}
 					goto l119
 				l120:
-					position, tokenIndex = position119, tokenIndex119
-					if !_rules[ruleArrayType]() {
-						goto l121
-					}
-					goto l119
-				l121:
-					position, tokenIndex = position119, tokenIndex119
-					if !_rules[ruleConstrainedType]() {
+					position, tokenIndex = position120, tokenIndex120
+				}
+				if !_rules[rule_]() {
+					goto l117
+				}
+				{
+					position121, tokenIndex121 := position, tokenIndex
+					if !_rules[ruleUnionType]() {
 						goto l122
 					}
-					goto l119
+					goto l121
 				l122:
-					position, tokenIndex = position119, tokenIndex119
-					if !_rules[ruleStructType]() {
+					position, tokenIndex = position121, tokenIndex121
+					if !_rules[ruleArrayType]() {
 						goto l123
 					}
-					goto l119
+					goto l121
 				l123:
-					position, tokenIndex = position119, tokenIndex119
-					if !_rules[ruleGenericType]() {
+					position, tokenIndex = position121, tokenIndex121
+					if !_rules[ruleConstrainedType]() {
 						goto l124
 					}
-					goto l119
+					goto l121
 				l124:
-					position, tokenIndex = position119, tokenIndex119
-					if !_rules[rulePrimitiveType]() {
+					position, tokenIndex = position121, tokenIndex121
+					if !_rules[ruleStructType]() {
 						goto l125
 					}
-					goto l119
+					goto l121
 				l125:
-					position, tokenIndex = position119, tokenIndex119
-					if !_rules[ruleReferenceType]() {
+					position, tokenIndex = position121, tokenIndex121
+					if !_rules[ruleGenericType]() {
 						goto l126
 					}
-					goto l119
+					goto l121
 				l126:
-					position, tokenIndex = position119, tokenIndex119
-					if !_rules[ruleLiteralType]() {
-						goto l115
-					}
-				}
-			l119:
-				add(ruleAttributedType, position116)
-			}
-			return true
-		l115:
-			position, tokenIndex = position115, tokenIndex115
-			return false
-		},
-		/* 26 ConstrainedType <- <((PrimitiveType / ReferenceType / LiteralType) ArrayConstraint)> */
-		func() bool {
-			position127, tokenIndex127 := position, tokenIndex
-			{
-				position128 := position
-				{
-					position129, tokenIndex129 := position, tokenIndex
+					position, tokenIndex = position121, tokenIndex121
 					if !_rules[rulePrimitiveType]() {
-						goto l130
-					}
-					goto l129
-				l130:
-					position, tokenIndex = position129, tokenIndex129
-					if !_rules[ruleReferenceType]() {
-						goto l131
-					}
-					goto l129
-				l131:
-					position, tokenIndex = position129, tokenIndex129
-					if !_rules[ruleLiteralType]() {
 						goto l127
 					}
+					goto l121
+				l127:
+					position, tokenIndex = position121, tokenIndex121
+					if !_rules[ruleReferenceType]() {
+						goto l128
+					}
+					goto l121
+				l128:
+					position, tokenIndex = position121, tokenIndex121
+					if !_rules[ruleLiteralType]() {
+						goto l117
+					}
 				}
-			l129:
-				if !_rules[ruleArrayConstraint]() {
-					goto l127
-				}
-				add(ruleConstrainedType, position128)
+			l121:
+				add(ruleAttributedType, position118)
 			}
 			return true
-		l127:
-			position, tokenIndex = position127, tokenIndex127
+		l117:
+			position, tokenIndex = position117, tokenIndex117
 			return false
 		},
-		/* 27 UnionType <- <(LPAREN Type (PIPE Type)* PIPE? RPAREN)> */
+		/* 27 ConstrainedType <- <((PrimitiveType / ReferenceType / LiteralType) ArrayConstraint)> */
 		func() bool {
-			position132, tokenIndex132 := position, tokenIndex
+			position129, tokenIndex129 := position, tokenIndex
 			{
-				position133 := position
+				position130 := position
+				{
+					position131, tokenIndex131 := position, tokenIndex
+					if !_rules[rulePrimitiveType]() {
+						goto l132
+					}
+					goto l131
+				l132:
+					position, tokenIndex = position131, tokenIndex131
+					if !_rules[ruleReferenceType]() {
+						goto l133
+					}
+					goto l131
+				l133:
+					position, tokenIndex = position131, tokenIndex131
+					if !_rules[ruleLiteralType]() {
+						goto l129
+					}
+				}
+			l131:
+				if !_rules[ruleArrayConstraint]() {
+					goto l129
+				}
+				add(ruleConstrainedType, position130)
+			}
+			return true
+		l129:
+			position, tokenIndex = position129, tokenIndex129
+			return false
+		},
+		/* 28 UnionType <- <(LPAREN Type (PIPE Type)* PIPE? RPAREN)> */
+		func() bool {
+			position134, tokenIndex134 := position, tokenIndex
+			{
+				position135 := position
 				if !_rules[ruleLPAREN]() {
-					goto l132
+					goto l134
 				}
 				if !_rules[ruleType]() {
-					goto l132
+					goto l134
 				}
-			l134:
+			l136:
 				{
-					position135, tokenIndex135 := position, tokenIndex
+					position137, tokenIndex137 := position, tokenIndex
 					if !_rules[rulePIPE]() {
-						goto l135
+						goto l137
 					}
 					if !_rules[ruleType]() {
-						goto l135
+						goto l137
 					}
-					goto l134
-				l135:
-					position, tokenIndex = position135, tokenIndex135
+					goto l136
+				l137:
+					position, tokenIndex = position137, tokenIndex137
 				}
 				{
-					position136, tokenIndex136 := position, tokenIndex
+					position138, tokenIndex138 := position, tokenIndex
 					if !_rules[rulePIPE]() {
-						goto l136
+						goto l138
 					}
-					goto l137
-				l136:
-					position, tokenIndex = position136, tokenIndex136
+					goto l139
+				l138:
+					position, tokenIndex = position138, tokenIndex138
 				}
-			l137:
+			l139:
 				if !_rules[ruleRPAREN]() {
-					goto l132
+					goto l134
 				}
-				add(ruleUnionType, position133)
+				add(ruleUnionType, position135)
 			}
 			return true
-		l132:
-			position, tokenIndex = position132, tokenIndex132
+		l134:
+			position, tokenIndex = position134, tokenIndex134
 			return false
 		},
-		/* 28 ArrayType <- <((LBRACKET Type RBRACKET ArrayConstraint?) / (PrimitiveType LBRACKET RBRACKET) / (ReferenceType LBRACKET RBRACKET))> */
+		/* 29 ArrayType <- <((LBRACKET Type RBRACKET ArrayConstraint?) / (PrimitiveType LBRACKET RBRACKET) / (ReferenceType LBRACKET RBRACKET))> */
 		func() bool {
-			position138, tokenIndex138 := position, tokenIndex
+			position140, tokenIndex140 := position, tokenIndex
 			{
-				position139 := position
+				position141 := position
 				{
-					position140, tokenIndex140 := position, tokenIndex
+					position142, tokenIndex142 := position, tokenIndex
 					if !_rules[ruleLBRACKET]() {
-						goto l141
+						goto l143
 					}
 					if !_rules[ruleType]() {
-						goto l141
+						goto l143
 					}
 					if !_rules[ruleRBRACKET]() {
-						goto l141
+						goto l143
 					}
 					{
-						position142, tokenIndex142 := position, tokenIndex
+						position144, tokenIndex144 := position, tokenIndex
 						if !_rules[ruleArrayConstraint]() {
-							goto l142
+							goto l144
 						}
-						goto l143
-					l142:
-						position, tokenIndex = position142, tokenIndex142
+						goto l145
+					l144:
+						position, tokenIndex = position144, tokenIndex144
 					}
+				l145:
+					goto l142
 				l143:
-					goto l140
-				l141:
-					position, tokenIndex = position140, tokenIndex140
+					position, tokenIndex = position142, tokenIndex142
 					if !_rules[rulePrimitiveType]() {
-						goto l144
+						goto l146
 					}
 					if !_rules[ruleLBRACKET]() {
-						goto l144
+						goto l146
 					}
 					if !_rules[ruleRBRACKET]() {
-						goto l144
+						goto l146
 					}
-					goto l140
-				l144:
-					position, tokenIndex = position140, tokenIndex140
+					goto l142
+				l146:
+					position, tokenIndex = position142, tokenIndex142
 					if !_rules[ruleReferenceType]() {
-						goto l138
+						goto l140
 					}
 					if !_rules[ruleLBRACKET]() {
-						goto l138
+						goto l140
 					}
 					if !_rules[ruleRBRACKET]() {
-						goto l138
+						goto l140
 					}
 				}
-			l140:
-				add(ruleArrayType, position139)
+			l142:
+				add(ruleArrayType, position141)
 			}
 			return true
-		l138:
-			position, tokenIndex = position138, tokenIndex138
+		l140:
+			position, tokenIndex = position140, tokenIndex140
 			return false
 		},
-		/* 29 StructType <- <('s' 't' 'r' 'u' 'c' 't' _ Identifier? _ LBRACE FieldList? RBRACE)> */
+		/* 30 StructType <- <('s' 't' 'r' 'u' 'c' 't' _ Identifier? _ LBRACE FieldList? RBRACE)> */
 		func() bool {
-			position145, tokenIndex145 := position, tokenIndex
+			position147, tokenIndex147 := position, tokenIndex
 			{
-				position146 := position
+				position148 := position
 				if buffer[position] != rune('s') {
-					goto l145
+					goto l147
 				}
 				position++
 				if buffer[position] != rune('t') {
-					goto l145
+					goto l147
 				}
 				position++
 				if buffer[position] != rune('r') {
-					goto l145
+					goto l147
 				}
 				position++
 				if buffer[position] != rune('u') {
-					goto l145
+					goto l147
 				}
 				position++
 				if buffer[position] != rune('c') {
-					goto l145
+					goto l147
 				}
 				position++
 				if buffer[position] != rune('t') {
-					goto l145
+					goto l147
 				}
 				position++
 				if !_rules[rule_]() {
-					goto l145
-				}
-				{
-					position147, tokenIndex147 := position, tokenIndex
-					if !_rules[ruleIdentifier]() {
-						goto l147
-					}
-					goto l148
-				l147:
-					position, tokenIndex = position147, tokenIndex147
-				}
-			l148:
-				if !_rules[rule_]() {
-					goto l145
-				}
-				if !_rules[ruleLBRACE]() {
-					goto l145
+					goto l147
 				}
 				{
 					position149, tokenIndex149 := position, tokenIndex
-					if !_rules[ruleFieldList]() {
+					if !_rules[ruleIdentifier]() {
 						goto l149
 					}
 					goto l150
@@ -1759,176 +1889,146 @@ func (p *MCDocParser) Init(options ...func(*MCDocParser) error) error {
 					position, tokenIndex = position149, tokenIndex149
 				}
 			l150:
+				if !_rules[rule_]() {
+					goto l147
+				}
+				if !_rules[ruleLBRACE]() {
+					goto l147
+				}
+				{
+					position151, tokenIndex151 := position, tokenIndex
+					if !_rules[ruleFieldList]() {
+						goto l151
+					}
+					goto l152
+				l151:
+					position, tokenIndex = position151, tokenIndex151
+				}
+			l152:
 				if !_rules[ruleRBRACE]() {
-					goto l145
+					goto l147
 				}
-				add(ruleStructType, position146)
+				add(ruleStructType, position148)
 			}
 			return true
-		l145:
-			position, tokenIndex = position145, tokenIndex145
+		l147:
+			position, tokenIndex = position147, tokenIndex147
 			return false
 		},
-		/* 30 GenericType <- <(Identifier LT GenericTypeParams RT)> */
-		func() bool {
-			position151, tokenIndex151 := position, tokenIndex
-			{
-				position152 := position
-				if !_rules[ruleIdentifier]() {
-					goto l151
-				}
-				if !_rules[ruleLT]() {
-					goto l151
-				}
-				if !_rules[ruleGenericTypeParams]() {
-					goto l151
-				}
-				if !_rules[ruleRT]() {
-					goto l151
-				}
-				add(ruleGenericType, position152)
-			}
-			return true
-		l151:
-			position, tokenIndex = position151, tokenIndex151
-			return false
-		},
-		/* 31 GenericTypeParams <- <(Type (COMMA Type)*)> */
+		/* 31 GenericType <- <(Identifier LT GenericTypeParams RT)> */
 		func() bool {
 			position153, tokenIndex153 := position, tokenIndex
 			{
 				position154 := position
-				if !_rules[ruleType]() {
+				if !_rules[ruleIdentifier]() {
 					goto l153
 				}
-			l155:
-				{
-					position156, tokenIndex156 := position, tokenIndex
-					if !_rules[ruleCOMMA]() {
-						goto l156
-					}
-					if !_rules[ruleType]() {
-						goto l156
-					}
-					goto l155
-				l156:
-					position, tokenIndex = position156, tokenIndex156
+				if !_rules[ruleLT]() {
+					goto l153
 				}
-				add(ruleGenericTypeParams, position154)
+				if !_rules[ruleGenericTypeParams]() {
+					goto l153
+				}
+				if !_rules[ruleRT]() {
+					goto l153
+				}
+				add(ruleGenericType, position154)
 			}
 			return true
 		l153:
 			position, tokenIndex = position153, tokenIndex153
 			return false
 		},
-		/* 32 PrimitiveType <- <((('s' 't' 'r' 'i' 'n' 'g') / ('d' 'o' 'u' 'b' 'l' 'e') / ('f' 'l' 'o' 'a' 't') / ('i' 'n' 't') / ('b' 'o' 'o' 'l' 'e' 'a' 'n') / ('a' 'n' 'y')) _)> */
+		/* 32 GenericTypeParams <- <(Type (COMMA Type)*)> */
 		func() bool {
-			position157, tokenIndex157 := position, tokenIndex
+			position155, tokenIndex155 := position, tokenIndex
 			{
-				position158 := position
+				position156 := position
+				if !_rules[ruleType]() {
+					goto l155
+				}
+			l157:
 				{
-					position159, tokenIndex159 := position, tokenIndex
+					position158, tokenIndex158 := position, tokenIndex
+					if !_rules[ruleCOMMA]() {
+						goto l158
+					}
+					if !_rules[ruleType]() {
+						goto l158
+					}
+					goto l157
+				l158:
+					position, tokenIndex = position158, tokenIndex158
+				}
+				add(ruleGenericTypeParams, position156)
+			}
+			return true
+		l155:
+			position, tokenIndex = position155, tokenIndex155
+			return false
+		},
+		/* 33 PrimitiveType <- <((('s' 't' 'r' 'i' 'n' 'g') / ('d' 'o' 'u' 'b' 'l' 'e') / ('f' 'l' 'o' 'a' 't') / ('i' 'n' 't') / ('b' 'o' 'o' 'l' 'e' 'a' 'n') / ('a' 'n' 'y')) _)> */
+		func() bool {
+			position159, tokenIndex159 := position, tokenIndex
+			{
+				position160 := position
+				{
+					position161, tokenIndex161 := position, tokenIndex
 					if buffer[position] != rune('s') {
-						goto l160
+						goto l162
 					}
 					position++
 					if buffer[position] != rune('t') {
-						goto l160
+						goto l162
 					}
 					position++
 					if buffer[position] != rune('r') {
-						goto l160
+						goto l162
 					}
 					position++
 					if buffer[position] != rune('i') {
-						goto l160
+						goto l162
 					}
 					position++
 					if buffer[position] != rune('n') {
-						goto l160
+						goto l162
 					}
 					position++
 					if buffer[position] != rune('g') {
-						goto l160
+						goto l162
 					}
 					position++
-					goto l159
-				l160:
-					position, tokenIndex = position159, tokenIndex159
+					goto l161
+				l162:
+					position, tokenIndex = position161, tokenIndex161
 					if buffer[position] != rune('d') {
-						goto l161
+						goto l163
 					}
 					position++
 					if buffer[position] != rune('o') {
-						goto l161
+						goto l163
 					}
 					position++
 					if buffer[position] != rune('u') {
-						goto l161
+						goto l163
 					}
 					position++
 					if buffer[position] != rune('b') {
-						goto l161
+						goto l163
 					}
 					position++
 					if buffer[position] != rune('l') {
-						goto l161
+						goto l163
 					}
 					position++
 					if buffer[position] != rune('e') {
-						goto l161
-					}
-					position++
-					goto l159
-				l161:
-					position, tokenIndex = position159, tokenIndex159
-					if buffer[position] != rune('f') {
-						goto l162
-					}
-					position++
-					if buffer[position] != rune('l') {
-						goto l162
-					}
-					position++
-					if buffer[position] != rune('o') {
-						goto l162
-					}
-					position++
-					if buffer[position] != rune('a') {
-						goto l162
-					}
-					position++
-					if buffer[position] != rune('t') {
-						goto l162
-					}
-					position++
-					goto l159
-				l162:
-					position, tokenIndex = position159, tokenIndex159
-					if buffer[position] != rune('i') {
 						goto l163
 					}
 					position++
-					if buffer[position] != rune('n') {
-						goto l163
-					}
-					position++
-					if buffer[position] != rune('t') {
-						goto l163
-					}
-					position++
-					goto l159
+					goto l161
 				l163:
-					position, tokenIndex = position159, tokenIndex159
-					if buffer[position] != rune('b') {
-						goto l164
-					}
-					position++
-					if buffer[position] != rune('o') {
-						goto l164
-					}
-					position++
-					if buffer[position] != rune('o') {
+					position, tokenIndex = position161, tokenIndex161
+					if buffer[position] != rune('f') {
 						goto l164
 					}
 					position++
@@ -1936,7 +2036,7 @@ func (p *MCDocParser) Init(options ...func(*MCDocParser) error) error {
 						goto l164
 					}
 					position++
-					if buffer[position] != rune('e') {
+					if buffer[position] != rune('o') {
 						goto l164
 					}
 					position++
@@ -1944,531 +2044,564 @@ func (p *MCDocParser) Init(options ...func(*MCDocParser) error) error {
 						goto l164
 					}
 					position++
-					if buffer[position] != rune('n') {
+					if buffer[position] != rune('t') {
 						goto l164
 					}
 					position++
-					goto l159
+					goto l161
 				l164:
-					position, tokenIndex = position159, tokenIndex159
-					if buffer[position] != rune('a') {
-						goto l157
+					position, tokenIndex = position161, tokenIndex161
+					if buffer[position] != rune('i') {
+						goto l165
 					}
 					position++
 					if buffer[position] != rune('n') {
-						goto l157
+						goto l165
+					}
+					position++
+					if buffer[position] != rune('t') {
+						goto l165
+					}
+					position++
+					goto l161
+				l165:
+					position, tokenIndex = position161, tokenIndex161
+					if buffer[position] != rune('b') {
+						goto l166
+					}
+					position++
+					if buffer[position] != rune('o') {
+						goto l166
+					}
+					position++
+					if buffer[position] != rune('o') {
+						goto l166
+					}
+					position++
+					if buffer[position] != rune('l') {
+						goto l166
+					}
+					position++
+					if buffer[position] != rune('e') {
+						goto l166
+					}
+					position++
+					if buffer[position] != rune('a') {
+						goto l166
+					}
+					position++
+					if buffer[position] != rune('n') {
+						goto l166
+					}
+					position++
+					goto l161
+				l166:
+					position, tokenIndex = position161, tokenIndex161
+					if buffer[position] != rune('a') {
+						goto l159
+					}
+					position++
+					if buffer[position] != rune('n') {
+						goto l159
 					}
 					position++
 					if buffer[position] != rune('y') {
-						goto l157
+						goto l159
 					}
 					position++
 				}
-			l159:
+			l161:
 				if !_rules[rule_]() {
-					goto l157
+					goto l159
 				}
-				add(rulePrimitiveType, position158)
+				add(rulePrimitiveType, position160)
 			}
 			return true
-		l157:
-			position, tokenIndex = position157, tokenIndex157
+		l159:
+			position, tokenIndex = position159, tokenIndex159
 			return false
 		},
-		/* 33 ReferenceType <- <(ComplexReference / Path / Identifier)> */
+		/* 34 ReferenceType <- <(ComplexReference / Path / Identifier)> */
 		func() bool {
-			position165, tokenIndex165 := position, tokenIndex
+			position167, tokenIndex167 := position, tokenIndex
 			{
-				position166 := position
+				position168 := position
 				{
-					position167, tokenIndex167 := position, tokenIndex
+					position169, tokenIndex169 := position, tokenIndex
 					if !_rules[ruleComplexReference]() {
-						goto l168
+						goto l170
 					}
-					goto l167
-				l168:
-					position, tokenIndex = position167, tokenIndex167
+					goto l169
+				l170:
+					position, tokenIndex = position169, tokenIndex169
 					if !_rules[rulePath]() {
-						goto l169
+						goto l171
 					}
-					goto l167
-				l169:
-					position, tokenIndex = position167, tokenIndex167
+					goto l169
+				l171:
+					position, tokenIndex = position169, tokenIndex169
 					if !_rules[ruleIdentifier]() {
-						goto l165
+						goto l167
 					}
 				}
-			l167:
-				add(ruleReferenceType, position166)
+			l169:
+				add(ruleReferenceType, position168)
 			}
 			return true
-		l165:
-			position, tokenIndex = position165, tokenIndex165
+		l167:
+			position, tokenIndex = position167, tokenIndex167
 			return false
 		},
-		/* 34 ComplexReference <- <(Identifier COLON ResourcePath ((LBRACKET LBRACKET ComplexRefParam RBRACKET RBRACKET) / (LBRACKET ComplexRefParam RBRACKET)) (LT GenericTypeParams RT)?)> */
+		/* 35 ComplexReference <- <(Identifier COLON ResourcePath ((LBRACKET LBRACKET ComplexRefParam RBRACKET RBRACKET) / (LBRACKET ComplexRefParam RBRACKET)) (LT GenericTypeParams RT)?)> */
 		func() bool {
-			position170, tokenIndex170 := position, tokenIndex
+			position172, tokenIndex172 := position, tokenIndex
 			{
-				position171 := position
+				position173 := position
 				if !_rules[ruleIdentifier]() {
-					goto l170
+					goto l172
 				}
 				if !_rules[ruleCOLON]() {
-					goto l170
+					goto l172
 				}
 				if !_rules[ruleResourcePath]() {
-					goto l170
-				}
-				{
-					position172, tokenIndex172 := position, tokenIndex
-					if !_rules[ruleLBRACKET]() {
-						goto l173
-					}
-					if !_rules[ruleLBRACKET]() {
-						goto l173
-					}
-					if !_rules[ruleComplexRefParam]() {
-						goto l173
-					}
-					if !_rules[ruleRBRACKET]() {
-						goto l173
-					}
-					if !_rules[ruleRBRACKET]() {
-						goto l173
-					}
 					goto l172
-				l173:
-					position, tokenIndex = position172, tokenIndex172
-					if !_rules[ruleLBRACKET]() {
-						goto l170
-					}
-					if !_rules[ruleComplexRefParam]() {
-						goto l170
-					}
-					if !_rules[ruleRBRACKET]() {
-						goto l170
-					}
 				}
-			l172:
 				{
 					position174, tokenIndex174 := position, tokenIndex
+					if !_rules[ruleLBRACKET]() {
+						goto l175
+					}
+					if !_rules[ruleLBRACKET]() {
+						goto l175
+					}
+					if !_rules[ruleComplexRefParam]() {
+						goto l175
+					}
+					if !_rules[ruleRBRACKET]() {
+						goto l175
+					}
+					if !_rules[ruleRBRACKET]() {
+						goto l175
+					}
+					goto l174
+				l175:
+					position, tokenIndex = position174, tokenIndex174
+					if !_rules[ruleLBRACKET]() {
+						goto l172
+					}
+					if !_rules[ruleComplexRefParam]() {
+						goto l172
+					}
+					if !_rules[ruleRBRACKET]() {
+						goto l172
+					}
+				}
+			l174:
+				{
+					position176, tokenIndex176 := position, tokenIndex
 					if !_rules[ruleLT]() {
-						goto l174
+						goto l176
 					}
 					if !_rules[ruleGenericTypeParams]() {
-						goto l174
+						goto l176
 					}
 					if !_rules[ruleRT]() {
-						goto l174
+						goto l176
 					}
-					goto l175
-				l174:
-					position, tokenIndex = position174, tokenIndex174
+					goto l177
+				l176:
+					position, tokenIndex = position176, tokenIndex176
 				}
-			l175:
-				add(ruleComplexReference, position171)
+			l177:
+				add(ruleComplexReference, position173)
 			}
 			return true
-		l170:
-			position, tokenIndex = position170, tokenIndex170
+		l172:
+			position, tokenIndex = position172, tokenIndex172
 			return false
 		},
-		/* 35 ResourcePath <- <(Identifier ('/' Identifier)*)> */
+		/* 36 ResourcePath <- <(Identifier ('/' Identifier)*)> */
 		func() bool {
-			position176, tokenIndex176 := position, tokenIndex
+			position178, tokenIndex178 := position, tokenIndex
 			{
-				position177 := position
+				position179 := position
 				if !_rules[ruleIdentifier]() {
-					goto l176
+					goto l178
 				}
-			l178:
+			l180:
 				{
-					position179, tokenIndex179 := position, tokenIndex
+					position181, tokenIndex181 := position, tokenIndex
 					if buffer[position] != rune('/') {
-						goto l179
+						goto l181
 					}
 					position++
 					if !_rules[ruleIdentifier]() {
-						goto l179
+						goto l181
 					}
-					goto l178
-				l179:
-					position, tokenIndex = position179, tokenIndex179
+					goto l180
+				l181:
+					position, tokenIndex = position181, tokenIndex181
 				}
-				add(ruleResourcePath, position177)
+				add(ruleResourcePath, position179)
 			}
 			return true
-		l176:
-			position, tokenIndex = position176, tokenIndex176
+		l178:
+			position, tokenIndex = position178, tokenIndex178
 			return false
 		},
-		/* 36 ComplexRefParam <- <(DottedPath / StaticIndexKey / String / Identifier)> */
+		/* 37 ComplexRefParam <- <(DottedPath / StaticIndexKey / String / Identifier)> */
 		func() bool {
-			position180, tokenIndex180 := position, tokenIndex
+			position182, tokenIndex182 := position, tokenIndex
 			{
-				position181 := position
+				position183 := position
 				{
-					position182, tokenIndex182 := position, tokenIndex
+					position184, tokenIndex184 := position, tokenIndex
 					if !_rules[ruleDottedPath]() {
-						goto l183
-					}
-					goto l182
-				l183:
-					position, tokenIndex = position182, tokenIndex182
-					if !_rules[ruleStaticIndexKey]() {
-						goto l184
-					}
-					goto l182
-				l184:
-					position, tokenIndex = position182, tokenIndex182
-					if !_rules[ruleString]() {
 						goto l185
 					}
-					goto l182
+					goto l184
 				l185:
-					position, tokenIndex = position182, tokenIndex182
-					if !_rules[ruleIdentifier]() {
-						goto l180
-					}
-				}
-			l182:
-				add(ruleComplexRefParam, position181)
-			}
-			return true
-		l180:
-			position, tokenIndex = position180, tokenIndex180
-			return false
-		},
-		/* 37 DottedPath <- <((StaticIndexKey / Identifier) ('.' Identifier)+)> */
-		func() bool {
-			position186, tokenIndex186 := position, tokenIndex
-			{
-				position187 := position
-				{
-					position188, tokenIndex188 := position, tokenIndex
+					position, tokenIndex = position184, tokenIndex184
 					if !_rules[ruleStaticIndexKey]() {
-						goto l189
-					}
-					goto l188
-				l189:
-					position, tokenIndex = position188, tokenIndex188
-					if !_rules[ruleIdentifier]() {
 						goto l186
 					}
-				}
-			l188:
-				if buffer[position] != rune('.') {
-					goto l186
-				}
-				position++
-				if !_rules[ruleIdentifier]() {
-					goto l186
-				}
-			l190:
-				{
-					position191, tokenIndex191 := position, tokenIndex
-					if buffer[position] != rune('.') {
-						goto l191
+					goto l184
+				l186:
+					position, tokenIndex = position184, tokenIndex184
+					if !_rules[ruleString]() {
+						goto l187
 					}
-					position++
+					goto l184
+				l187:
+					position, tokenIndex = position184, tokenIndex184
 					if !_rules[ruleIdentifier]() {
+						goto l182
+					}
+				}
+			l184:
+				add(ruleComplexRefParam, position183)
+			}
+			return true
+		l182:
+			position, tokenIndex = position182, tokenIndex182
+			return false
+		},
+		/* 38 DottedPath <- <((StaticIndexKey / Identifier) ('.' Identifier)+)> */
+		func() bool {
+			position188, tokenIndex188 := position, tokenIndex
+			{
+				position189 := position
+				{
+					position190, tokenIndex190 := position, tokenIndex
+					if !_rules[ruleStaticIndexKey]() {
 						goto l191
 					}
 					goto l190
 				l191:
-					position, tokenIndex = position191, tokenIndex191
+					position, tokenIndex = position190, tokenIndex190
+					if !_rules[ruleIdentifier]() {
+						goto l188
+					}
 				}
-				add(ruleDottedPath, position187)
+			l190:
+				if buffer[position] != rune('.') {
+					goto l188
+				}
+				position++
+				if !_rules[ruleIdentifier]() {
+					goto l188
+				}
+			l192:
+				{
+					position193, tokenIndex193 := position, tokenIndex
+					if buffer[position] != rune('.') {
+						goto l193
+					}
+					position++
+					if !_rules[ruleIdentifier]() {
+						goto l193
+					}
+					goto l192
+				l193:
+					position, tokenIndex = position193, tokenIndex193
+				}
+				add(ruleDottedPath, position189)
 			}
 			return true
-		l186:
-			position, tokenIndex = position186, tokenIndex186
+		l188:
+			position, tokenIndex = position188, tokenIndex188
 			return false
 		},
-		/* 38 StaticIndexKey <- <((('%' 'f' 'a' 'l' 'l' 'b' 'a' 'c' 'k') / ('%' 'k' 'e' 'y') / ('%' 'p' 'a' 'r' 'e' 'n' 't') / ('%' 'n' 'o' 'n' 'e') / ('%' 'u' 'n' 'k' 'n' 'o' 'w' 'n')) _)> */
+		/* 39 StaticIndexKey <- <((('%' 'f' 'a' 'l' 'l' 'b' 'a' 'c' 'k') / ('%' 'k' 'e' 'y') / ('%' 'p' 'a' 'r' 'e' 'n' 't') / ('%' 'n' 'o' 'n' 'e') / ('%' 'u' 'n' 'k' 'n' 'o' 'w' 'n')) _)> */
 		func() bool {
-			position192, tokenIndex192 := position, tokenIndex
+			position194, tokenIndex194 := position, tokenIndex
 			{
-				position193 := position
+				position195 := position
 				{
-					position194, tokenIndex194 := position, tokenIndex
+					position196, tokenIndex196 := position, tokenIndex
 					if buffer[position] != rune('%') {
-						goto l195
+						goto l197
 					}
 					position++
 					if buffer[position] != rune('f') {
-						goto l195
+						goto l197
 					}
 					position++
 					if buffer[position] != rune('a') {
-						goto l195
+						goto l197
 					}
 					position++
 					if buffer[position] != rune('l') {
-						goto l195
+						goto l197
 					}
 					position++
 					if buffer[position] != rune('l') {
-						goto l195
+						goto l197
 					}
 					position++
 					if buffer[position] != rune('b') {
-						goto l195
+						goto l197
 					}
 					position++
 					if buffer[position] != rune('a') {
-						goto l195
+						goto l197
 					}
 					position++
 					if buffer[position] != rune('c') {
-						goto l195
+						goto l197
 					}
 					position++
 					if buffer[position] != rune('k') {
-						goto l195
+						goto l197
 					}
 					position++
-					goto l194
-				l195:
-					position, tokenIndex = position194, tokenIndex194
+					goto l196
+				l197:
+					position, tokenIndex = position196, tokenIndex196
 					if buffer[position] != rune('%') {
-						goto l196
+						goto l198
 					}
 					position++
 					if buffer[position] != rune('k') {
-						goto l196
+						goto l198
 					}
 					position++
 					if buffer[position] != rune('e') {
-						goto l196
+						goto l198
 					}
 					position++
 					if buffer[position] != rune('y') {
-						goto l196
+						goto l198
 					}
 					position++
-					goto l194
-				l196:
-					position, tokenIndex = position194, tokenIndex194
+					goto l196
+				l198:
+					position, tokenIndex = position196, tokenIndex196
 					if buffer[position] != rune('%') {
-						goto l197
+						goto l199
 					}
 					position++
 					if buffer[position] != rune('p') {
-						goto l197
+						goto l199
 					}
 					position++
 					if buffer[position] != rune('a') {
-						goto l197
+						goto l199
 					}
 					position++
 					if buffer[position] != rune('r') {
-						goto l197
+						goto l199
 					}
 					position++
 					if buffer[position] != rune('e') {
-						goto l197
+						goto l199
 					}
 					position++
 					if buffer[position] != rune('n') {
-						goto l197
+						goto l199
 					}
 					position++
 					if buffer[position] != rune('t') {
-						goto l197
+						goto l199
 					}
 					position++
-					goto l194
-				l197:
-					position, tokenIndex = position194, tokenIndex194
+					goto l196
+				l199:
+					position, tokenIndex = position196, tokenIndex196
 					if buffer[position] != rune('%') {
-						goto l198
+						goto l200
 					}
 					position++
 					if buffer[position] != rune('n') {
-						goto l198
+						goto l200
 					}
 					position++
 					if buffer[position] != rune('o') {
-						goto l198
+						goto l200
 					}
 					position++
 					if buffer[position] != rune('n') {
-						goto l198
+						goto l200
 					}
 					position++
 					if buffer[position] != rune('e') {
-						goto l198
+						goto l200
 					}
 					position++
-					goto l194
-				l198:
-					position, tokenIndex = position194, tokenIndex194
+					goto l196
+				l200:
+					position, tokenIndex = position196, tokenIndex196
 					if buffer[position] != rune('%') {
-						goto l192
+						goto l194
 					}
 					position++
 					if buffer[position] != rune('u') {
-						goto l192
+						goto l194
 					}
 					position++
 					if buffer[position] != rune('n') {
-						goto l192
+						goto l194
 					}
 					position++
 					if buffer[position] != rune('k') {
-						goto l192
+						goto l194
 					}
 					position++
 					if buffer[position] != rune('n') {
-						goto l192
+						goto l194
 					}
 					position++
 					if buffer[position] != rune('o') {
-						goto l192
+						goto l194
 					}
 					position++
 					if buffer[position] != rune('w') {
-						goto l192
+						goto l194
 					}
 					position++
 					if buffer[position] != rune('n') {
-						goto l192
+						goto l194
 					}
 					position++
 				}
-			l194:
+			l196:
 				if !_rules[rule_]() {
-					goto l192
+					goto l194
 				}
-				add(ruleStaticIndexKey, position193)
+				add(ruleStaticIndexKey, position195)
 			}
 			return true
-		l192:
-			position, tokenIndex = position192, tokenIndex192
+		l194:
+			position, tokenIndex = position194, tokenIndex194
 			return false
 		},
-		/* 39 LiteralType <- <(String / Number / Boolean)> */
+		/* 40 LiteralType <- <(String / Number / Boolean)> */
 		func() bool {
-			position199, tokenIndex199 := position, tokenIndex
+			position201, tokenIndex201 := position, tokenIndex
 			{
-				position200 := position
+				position202 := position
 				{
-					position201, tokenIndex201 := position, tokenIndex
+					position203, tokenIndex203 := position, tokenIndex
 					if !_rules[ruleString]() {
-						goto l202
-					}
-					goto l201
-				l202:
-					position, tokenIndex = position201, tokenIndex201
-					if !_rules[ruleNumber]() {
-						goto l203
-					}
-					goto l201
-				l203:
-					position, tokenIndex = position201, tokenIndex201
-					if !_rules[ruleBoolean]() {
-						goto l199
-					}
-				}
-			l201:
-				add(ruleLiteralType, position200)
-			}
-			return true
-		l199:
-			position, tokenIndex = position199, tokenIndex199
-			return false
-		},
-		/* 40 ArrayConstraint <- <(AT (Range / Number))> */
-		func() bool {
-			position204, tokenIndex204 := position, tokenIndex
-			{
-				position205 := position
-				if !_rules[ruleAT]() {
-					goto l204
-				}
-				{
-					position206, tokenIndex206 := position, tokenIndex
-					if !_rules[ruleRange]() {
-						goto l207
-					}
-					goto l206
-				l207:
-					position, tokenIndex = position206, tokenIndex206
-					if !_rules[ruleNumber]() {
 						goto l204
 					}
+					goto l203
+				l204:
+					position, tokenIndex = position203, tokenIndex203
+					if !_rules[ruleNumber]() {
+						goto l205
+					}
+					goto l203
+				l205:
+					position, tokenIndex = position203, tokenIndex203
+					if !_rules[ruleBoolean]() {
+						goto l201
+					}
 				}
-			l206:
-				add(ruleArrayConstraint, position205)
+			l203:
+				add(ruleLiteralType, position202)
 			}
 			return true
-		l204:
-			position, tokenIndex = position204, tokenIndex204
+		l201:
+			position, tokenIndex = position201, tokenIndex201
 			return false
 		},
-		/* 41 Range <- <((Number RangeOperator Number) / (Number RangeOperator) / (RangeOperator Number))> */
+		/* 41 ArrayConstraint <- <(AT (Range / Number))> */
 		func() bool {
-			position208, tokenIndex208 := position, tokenIndex
+			position206, tokenIndex206 := position, tokenIndex
 			{
-				position209 := position
+				position207 := position
+				if !_rules[ruleAT]() {
+					goto l206
+				}
 				{
-					position210, tokenIndex210 := position, tokenIndex
+					position208, tokenIndex208 := position, tokenIndex
+					if !_rules[ruleRange]() {
+						goto l209
+					}
+					goto l208
+				l209:
+					position, tokenIndex = position208, tokenIndex208
 					if !_rules[ruleNumber]() {
-						goto l211
-					}
-					if !_rules[ruleRangeOperator]() {
-						goto l211
-					}
-					if !_rules[ruleNumber]() {
-						goto l211
-					}
-					goto l210
-				l211:
-					position, tokenIndex = position210, tokenIndex210
-					if !_rules[ruleNumber]() {
-						goto l212
-					}
-					if !_rules[ruleRangeOperator]() {
-						goto l212
-					}
-					goto l210
-				l212:
-					position, tokenIndex = position210, tokenIndex210
-					if !_rules[ruleRangeOperator]() {
-						goto l208
-					}
-					if !_rules[ruleNumber]() {
-						goto l208
+						goto l206
 					}
 				}
-			l210:
-				add(ruleRange, position209)
+			l208:
+				add(ruleArrayConstraint, position207)
 			}
 			return true
-		l208:
-			position, tokenIndex = position208, tokenIndex208
+		l206:
+			position, tokenIndex = position206, tokenIndex206
 			return false
 		},
-		/* 42 RangeOperator <- <(LT? DOTDOT LT?)> */
+		/* 42 Range <- <((Number RangeOperator Number) / (Number RangeOperator) / (RangeOperator Number))> */
 		func() bool {
-			position213, tokenIndex213 := position, tokenIndex
+			position210, tokenIndex210 := position, tokenIndex
 			{
-				position214 := position
+				position211 := position
 				{
-					position215, tokenIndex215 := position, tokenIndex
-					if !_rules[ruleLT]() {
-						goto l215
+					position212, tokenIndex212 := position, tokenIndex
+					if !_rules[ruleNumber]() {
+						goto l213
 					}
-					goto l216
-				l215:
-					position, tokenIndex = position215, tokenIndex215
+					if !_rules[ruleRangeOperator]() {
+						goto l213
+					}
+					if !_rules[ruleNumber]() {
+						goto l213
+					}
+					goto l212
+				l213:
+					position, tokenIndex = position212, tokenIndex212
+					if !_rules[ruleNumber]() {
+						goto l214
+					}
+					if !_rules[ruleRangeOperator]() {
+						goto l214
+					}
+					goto l212
+				l214:
+					position, tokenIndex = position212, tokenIndex212
+					if !_rules[ruleRangeOperator]() {
+						goto l210
+					}
+					if !_rules[ruleNumber]() {
+						goto l210
+					}
 				}
-			l216:
-				if !_rules[ruleDOTDOT]() {
-					goto l213
-				}
+			l212:
+				add(ruleRange, position211)
+			}
+			return true
+		l210:
+			position, tokenIndex = position210, tokenIndex210
+			return false
+		},
+		/* 43 RangeOperator <- <(LT? DOTDOT LT?)> */
+		func() bool {
+			position215, tokenIndex215 := position, tokenIndex
+			{
+				position216 := position
 				{
 					position217, tokenIndex217 := position, tokenIndex
 					if !_rules[ruleLT]() {
@@ -2479,1131 +2612,1292 @@ func (p *MCDocParser) Init(options ...func(*MCDocParser) error) error {
 					position, tokenIndex = position217, tokenIndex217
 				}
 			l218:
-				add(ruleRangeOperator, position214)
+				if !_rules[ruleDOTDOT]() {
+					goto l215
+				}
+				{
+					position219, tokenIndex219 := position, tokenIndex
+					if !_rules[ruleLT]() {
+						goto l219
+					}
+					goto l220
+				l219:
+					position, tokenIndex = position219, tokenIndex219
+				}
+			l220:
+				add(ruleRangeOperator, position216)
 			}
 			return true
-		l213:
-			position, tokenIndex = position213, tokenIndex213
+		l215:
+			position, tokenIndex = position215, tokenIndex215
 			return false
 		},
-		/* 43 Attribute <- <('#' LBRACKET AttributeList RBRACKET)> */
-		func() bool {
-			position219, tokenIndex219 := position, tokenIndex
-			{
-				position220 := position
-				if buffer[position] != rune('#') {
-					goto l219
-				}
-				position++
-				if !_rules[ruleLBRACKET]() {
-					goto l219
-				}
-				if !_rules[ruleAttributeList]() {
-					goto l219
-				}
-				if !_rules[ruleRBRACKET]() {
-					goto l219
-				}
-				add(ruleAttribute, position220)
-			}
-			return true
-		l219:
-			position, tokenIndex = position219, tokenIndex219
-			return false
-		},
-		/* 44 AttributeList <- <(AttributeItem (COMMA AttributeItem)*)> */
+		/* 44 Attribute <- <('#' LBRACKET AttributeList RBRACKET)> */
 		func() bool {
 			position221, tokenIndex221 := position, tokenIndex
 			{
 				position222 := position
-				if !_rules[ruleAttributeItem]() {
+				if buffer[position] != rune('#') {
 					goto l221
 				}
-			l223:
-				{
-					position224, tokenIndex224 := position, tokenIndex
-					if !_rules[ruleCOMMA]() {
-						goto l224
-					}
-					if !_rules[ruleAttributeItem]() {
-						goto l224
-					}
-					goto l223
-				l224:
-					position, tokenIndex = position224, tokenIndex224
+				position++
+				if !_rules[ruleLBRACKET]() {
+					goto l221
 				}
-				add(ruleAttributeList, position222)
+				if !_rules[ruleAttributeList]() {
+					goto l221
+				}
+				if !_rules[ruleRBRACKET]() {
+					goto l221
+				}
+				add(ruleAttribute, position222)
 			}
 			return true
 		l221:
 			position, tokenIndex = position221, tokenIndex221
 			return false
 		},
-		/* 45 AttributeItem <- <(AttributePair / AttributeCall / AttributeCallWithEquals / Identifier)> */
+		/* 45 AttributeList <- <(AttributeItem (COMMA AttributeItem)*)> */
 		func() bool {
-			position225, tokenIndex225 := position, tokenIndex
+			position223, tokenIndex223 := position, tokenIndex
 			{
-				position226 := position
+				position224 := position
+				if !_rules[ruleAttributeItem]() {
+					goto l223
+				}
+			l225:
 				{
-					position227, tokenIndex227 := position, tokenIndex
+					position226, tokenIndex226 := position, tokenIndex
+					if !_rules[ruleCOMMA]() {
+						goto l226
+					}
+					if !_rules[ruleAttributeItem]() {
+						goto l226
+					}
+					goto l225
+				l226:
+					position, tokenIndex = position226, tokenIndex226
+				}
+				add(ruleAttributeList, position224)
+			}
+			return true
+		l223:
+			position, tokenIndex = position223, tokenIndex223
+			return false
+		},
+		/* 46 AttributeItem <- <(AttributePair / AttributeCall / AttributeCallWithEquals / Identifier)> */
+		func() bool {
+			position227, tokenIndex227 := position, tokenIndex
+			{
+				position228 := position
+				{
+					position229, tokenIndex229 := position, tokenIndex
 					if !_rules[ruleAttributePair]() {
-						goto l228
-					}
-					goto l227
-				l228:
-					position, tokenIndex = position227, tokenIndex227
-					if !_rules[ruleAttributeCall]() {
-						goto l229
-					}
-					goto l227
-				l229:
-					position, tokenIndex = position227, tokenIndex227
-					if !_rules[ruleAttributeCallWithEquals]() {
 						goto l230
 					}
-					goto l227
+					goto l229
 				l230:
-					position, tokenIndex = position227, tokenIndex227
+					position, tokenIndex = position229, tokenIndex229
+					if !_rules[ruleAttributeCall]() {
+						goto l231
+					}
+					goto l229
+				l231:
+					position, tokenIndex = position229, tokenIndex229
+					if !_rules[ruleAttributeCallWithEquals]() {
+						goto l232
+					}
+					goto l229
+				l232:
+					position, tokenIndex = position229, tokenIndex229
 					if !_rules[ruleIdentifier]() {
-						goto l225
+						goto l227
 					}
 				}
-			l227:
-				add(ruleAttributeItem, position226)
+			l229:
+				add(ruleAttributeItem, position228)
 			}
 			return true
-		l225:
-			position, tokenIndex = position225, tokenIndex225
+		l227:
+			position, tokenIndex = position227, tokenIndex227
 			return false
 		},
-		/* 46 AttributeCallWithEquals <- <(Identifier EQUALS LPAREN AttributeParamList? RPAREN)> */
+		/* 47 AttributeCallWithEquals <- <(Identifier EQUALS LPAREN AttributeParamList? RPAREN)> */
 		func() bool {
-			position231, tokenIndex231 := position, tokenIndex
+			position233, tokenIndex233 := position, tokenIndex
 			{
-				position232 := position
+				position234 := position
 				if !_rules[ruleIdentifier]() {
-					goto l231
+					goto l233
 				}
 				if !_rules[ruleEQUALS]() {
-					goto l231
+					goto l233
 				}
 				if !_rules[ruleLPAREN]() {
-					goto l231
+					goto l233
 				}
 				{
-					position233, tokenIndex233 := position, tokenIndex
+					position235, tokenIndex235 := position, tokenIndex
 					if !_rules[ruleAttributeParamList]() {
-						goto l233
+						goto l235
 					}
-					goto l234
-				l233:
-					position, tokenIndex = position233, tokenIndex233
+					goto l236
+				l235:
+					position, tokenIndex = position235, tokenIndex235
 				}
-			l234:
+			l236:
 				if !_rules[ruleRPAREN]() {
-					goto l231
+					goto l233
 				}
-				add(ruleAttributeCallWithEquals, position232)
+				add(ruleAttributeCallWithEquals, position234)
 			}
 			return true
-		l231:
-			position, tokenIndex = position231, tokenIndex231
+		l233:
+			position, tokenIndex = position233, tokenIndex233
 			return false
 		},
-		/* 47 AttributeCall <- <(Identifier LPAREN AttributeParamList? RPAREN)> */
+		/* 48 AttributeCall <- <(Identifier LPAREN AttributeParamList? RPAREN)> */
 		func() bool {
-			position235, tokenIndex235 := position, tokenIndex
+			position237, tokenIndex237 := position, tokenIndex
 			{
-				position236 := position
+				position238 := position
 				if !_rules[ruleIdentifier]() {
-					goto l235
+					goto l237
 				}
 				if !_rules[ruleLPAREN]() {
-					goto l235
+					goto l237
 				}
 				{
-					position237, tokenIndex237 := position, tokenIndex
+					position239, tokenIndex239 := position, tokenIndex
 					if !_rules[ruleAttributeParamList]() {
-						goto l237
+						goto l239
 					}
-					goto l238
-				l237:
-					position, tokenIndex = position237, tokenIndex237
+					goto l240
+				l239:
+					position, tokenIndex = position239, tokenIndex239
 				}
-			l238:
+			l240:
 				if !_rules[ruleRPAREN]() {
-					goto l235
+					goto l237
 				}
-				add(ruleAttributeCall, position236)
+				add(ruleAttributeCall, position238)
 			}
 			return true
-		l235:
-			position, tokenIndex = position235, tokenIndex235
+		l237:
+			position, tokenIndex = position237, tokenIndex237
 			return false
 		},
-		/* 48 AttributeParamList <- <(AttributeParam (COMMA AttributeParam)*)> */
+		/* 49 AttributeParamList <- <(AttributeParam (COMMA AttributeParam)*)> */
 		func() bool {
-			position239, tokenIndex239 := position, tokenIndex
+			position241, tokenIndex241 := position, tokenIndex
 			{
-				position240 := position
+				position242 := position
 				if !_rules[ruleAttributeParam]() {
-					goto l239
+					goto l241
 				}
-			l241:
+			l243:
 				{
-					position242, tokenIndex242 := position, tokenIndex
+					position244, tokenIndex244 := position, tokenIndex
 					if !_rules[ruleCOMMA]() {
-						goto l242
+						goto l244
 					}
 					if !_rules[ruleAttributeParam]() {
-						goto l242
+						goto l244
 					}
-					goto l241
-				l242:
-					position, tokenIndex = position242, tokenIndex242
+					goto l243
+				l244:
+					position, tokenIndex = position244, tokenIndex244
 				}
-				add(ruleAttributeParamList, position240)
+				add(ruleAttributeParamList, position242)
 			}
 			return true
-		l239:
-			position, tokenIndex = position239, tokenIndex239
+		l241:
+			position, tokenIndex = position241, tokenIndex241
 			return false
 		},
-		/* 49 AttributeParam <- <(AttributePair / AttributeValue)> */
+		/* 50 AttributeParam <- <(AttributePair / AttributeValue)> */
 		func() bool {
-			position243, tokenIndex243 := position, tokenIndex
+			position245, tokenIndex245 := position, tokenIndex
 			{
-				position244 := position
+				position246 := position
 				{
-					position245, tokenIndex245 := position, tokenIndex
+					position247, tokenIndex247 := position, tokenIndex
 					if !_rules[ruleAttributePair]() {
-						goto l246
+						goto l248
 					}
-					goto l245
-				l246:
-					position, tokenIndex = position245, tokenIndex245
+					goto l247
+				l248:
+					position, tokenIndex = position247, tokenIndex247
 					if !_rules[ruleAttributeValue]() {
-						goto l243
+						goto l245
 					}
 				}
-			l245:
-				add(ruleAttributeParam, position244)
+			l247:
+				add(ruleAttributeParam, position246)
 			}
 			return true
-		l243:
-			position, tokenIndex = position243, tokenIndex243
+		l245:
+			position, tokenIndex = position245, tokenIndex245
 			return false
 		},
-		/* 50 AttributePair <- <(Identifier EQUALS AttributeValue)> */
-		func() bool {
-			position247, tokenIndex247 := position, tokenIndex
-			{
-				position248 := position
-				if !_rules[ruleIdentifier]() {
-					goto l247
-				}
-				if !_rules[ruleEQUALS]() {
-					goto l247
-				}
-				if !_rules[ruleAttributeValue]() {
-					goto l247
-				}
-				add(ruleAttributePair, position248)
-			}
-			return true
-		l247:
-			position, tokenIndex = position247, tokenIndex247
-			return false
-		},
-		/* 51 AttributeValue <- <(ArrayLiteral / ComplexReference / String / Number / Boolean / Identifier)> */
+		/* 51 AttributePair <- <(Identifier EQUALS AttributeValue)> */
 		func() bool {
 			position249, tokenIndex249 := position, tokenIndex
 			{
 				position250 := position
-				{
-					position251, tokenIndex251 := position, tokenIndex
-					if !_rules[ruleArrayLiteral]() {
-						goto l252
-					}
-					goto l251
-				l252:
-					position, tokenIndex = position251, tokenIndex251
-					if !_rules[ruleComplexReference]() {
-						goto l253
-					}
-					goto l251
-				l253:
-					position, tokenIndex = position251, tokenIndex251
-					if !_rules[ruleString]() {
-						goto l254
-					}
-					goto l251
-				l254:
-					position, tokenIndex = position251, tokenIndex251
-					if !_rules[ruleNumber]() {
-						goto l255
-					}
-					goto l251
-				l255:
-					position, tokenIndex = position251, tokenIndex251
-					if !_rules[ruleBoolean]() {
-						goto l256
-					}
-					goto l251
-				l256:
-					position, tokenIndex = position251, tokenIndex251
-					if !_rules[ruleIdentifier]() {
-						goto l249
-					}
+				if !_rules[ruleIdentifier]() {
+					goto l249
 				}
-			l251:
-				add(ruleAttributeValue, position250)
+				if !_rules[ruleEQUALS]() {
+					goto l249
+				}
+				if !_rules[ruleAttributeValue]() {
+					goto l249
+				}
+				add(ruleAttributePair, position250)
 			}
 			return true
 		l249:
 			position, tokenIndex = position249, tokenIndex249
 			return false
 		},
-		/* 52 ArrayLiteral <- <(LBRACKET (AttributeValue (COMMA AttributeValue)*)? RBRACKET)> */
+		/* 52 AttributeValue <- <(ArrayLiteral / ComplexReference / String / Number / Boolean / Identifier)> */
 		func() bool {
-			position257, tokenIndex257 := position, tokenIndex
+			position251, tokenIndex251 := position, tokenIndex
 			{
-				position258 := position
+				position252 := position
+				{
+					position253, tokenIndex253 := position, tokenIndex
+					if !_rules[ruleArrayLiteral]() {
+						goto l254
+					}
+					goto l253
+				l254:
+					position, tokenIndex = position253, tokenIndex253
+					if !_rules[ruleComplexReference]() {
+						goto l255
+					}
+					goto l253
+				l255:
+					position, tokenIndex = position253, tokenIndex253
+					if !_rules[ruleString]() {
+						goto l256
+					}
+					goto l253
+				l256:
+					position, tokenIndex = position253, tokenIndex253
+					if !_rules[ruleNumber]() {
+						goto l257
+					}
+					goto l253
+				l257:
+					position, tokenIndex = position253, tokenIndex253
+					if !_rules[ruleBoolean]() {
+						goto l258
+					}
+					goto l253
+				l258:
+					position, tokenIndex = position253, tokenIndex253
+					if !_rules[ruleIdentifier]() {
+						goto l251
+					}
+				}
+			l253:
+				add(ruleAttributeValue, position252)
+			}
+			return true
+		l251:
+			position, tokenIndex = position251, tokenIndex251
+			return false
+		},
+		/* 53 ArrayLiteral <- <(LBRACKET (AttributeValue (COMMA AttributeValue)*)? RBRACKET)> */
+		func() bool {
+			position259, tokenIndex259 := position, tokenIndex
+			{
+				position260 := position
 				if !_rules[ruleLBRACKET]() {
-					goto l257
+					goto l259
 				}
 				{
-					position259, tokenIndex259 := position, tokenIndex
+					position261, tokenIndex261 := position, tokenIndex
 					if !_rules[ruleAttributeValue]() {
-						goto l259
+						goto l261
 					}
-				l261:
+				l263:
 					{
-						position262, tokenIndex262 := position, tokenIndex
+						position264, tokenIndex264 := position, tokenIndex
 						if !_rules[ruleCOMMA]() {
-							goto l262
+							goto l264
 						}
 						if !_rules[ruleAttributeValue]() {
-							goto l262
-						}
-						goto l261
-					l262:
-						position, tokenIndex = position262, tokenIndex262
-					}
-					goto l260
-				l259:
-					position, tokenIndex = position259, tokenIndex259
-				}
-			l260:
-				if !_rules[ruleRBRACKET]() {
-					goto l257
-				}
-				add(ruleArrayLiteral, position258)
-			}
-			return true
-		l257:
-			position, tokenIndex = position257, tokenIndex257
-			return false
-		},
-		/* 53 Comment <- <('/' '/' (!EOL .)* (EOL / !.))> */
-		func() bool {
-			position263, tokenIndex263 := position, tokenIndex
-			{
-				position264 := position
-				if buffer[position] != rune('/') {
-					goto l263
-				}
-				position++
-				if buffer[position] != rune('/') {
-					goto l263
-				}
-				position++
-			l265:
-				{
-					position266, tokenIndex266 := position, tokenIndex
-					{
-						position267, tokenIndex267 := position, tokenIndex
-						if !_rules[ruleEOL]() {
-							goto l267
-						}
-						goto l266
-					l267:
-						position, tokenIndex = position267, tokenIndex267
-					}
-					if !matchDot() {
-						goto l266
-					}
-					goto l265
-				l266:
-					position, tokenIndex = position266, tokenIndex266
-				}
-				{
-					position268, tokenIndex268 := position, tokenIndex
-					if !_rules[ruleEOL]() {
-						goto l269
-					}
-					goto l268
-				l269:
-					position, tokenIndex = position268, tokenIndex268
-					{
-						position270, tokenIndex270 := position, tokenIndex
-						if !matchDot() {
-							goto l270
+							goto l264
 						}
 						goto l263
-					l270:
-						position, tokenIndex = position270, tokenIndex270
+					l264:
+						position, tokenIndex = position264, tokenIndex264
 					}
+					goto l262
+				l261:
+					position, tokenIndex = position261, tokenIndex261
 				}
-			l268:
-				add(ruleComment, position264)
+			l262:
+				if !_rules[ruleRBRACKET]() {
+					goto l259
+				}
+				add(ruleArrayLiteral, position260)
 			}
 			return true
-		l263:
-			position, tokenIndex = position263, tokenIndex263
+		l259:
+			position, tokenIndex = position259, tokenIndex259
 			return false
 		},
-		/* 54 DocComment <- <('/' '/' '/' (!EOL .)* (EOL / !.))> */
+		/* 54 Comment <- <('/' '/' (!EOL .)* (EOL / !.))> */
 		func() bool {
-			position271, tokenIndex271 := position, tokenIndex
+			position265, tokenIndex265 := position, tokenIndex
 			{
-				position272 := position
+				position266 := position
 				if buffer[position] != rune('/') {
-					goto l271
+					goto l265
 				}
 				position++
 				if buffer[position] != rune('/') {
-					goto l271
+					goto l265
 				}
 				position++
-				if buffer[position] != rune('/') {
-					goto l271
-				}
-				position++
-			l273:
+			l267:
 				{
-					position274, tokenIndex274 := position, tokenIndex
+					position268, tokenIndex268 := position, tokenIndex
 					{
-						position275, tokenIndex275 := position, tokenIndex
+						position269, tokenIndex269 := position, tokenIndex
 						if !_rules[ruleEOL]() {
-							goto l275
+							goto l269
 						}
-						goto l274
-					l275:
-						position, tokenIndex = position275, tokenIndex275
+						goto l268
+					l269:
+						position, tokenIndex = position269, tokenIndex269
 					}
 					if !matchDot() {
-						goto l274
+						goto l268
 					}
-					goto l273
-				l274:
-					position, tokenIndex = position274, tokenIndex274
+					goto l267
+				l268:
+					position, tokenIndex = position268, tokenIndex268
 				}
 				{
-					position276, tokenIndex276 := position, tokenIndex
+					position270, tokenIndex270 := position, tokenIndex
 					if !_rules[ruleEOL]() {
-						goto l277
-					}
-					goto l276
-				l277:
-					position, tokenIndex = position276, tokenIndex276
-					{
-						position278, tokenIndex278 := position, tokenIndex
-						if !matchDot() {
-							goto l278
-						}
 						goto l271
-					l278:
-						position, tokenIndex = position278, tokenIndex278
+					}
+					goto l270
+				l271:
+					position, tokenIndex = position270, tokenIndex270
+					{
+						position272, tokenIndex272 := position, tokenIndex
+						if !matchDot() {
+							goto l272
+						}
+						goto l265
+					l272:
+						position, tokenIndex = position272, tokenIndex272
 					}
 				}
-			l276:
-				add(ruleDocComment, position272)
+			l270:
+				add(ruleComment, position266)
 			}
 			return true
-		l271:
-			position, tokenIndex = position271, tokenIndex271
+		l265:
+			position, tokenIndex = position265, tokenIndex265
 			return false
 		},
-		/* 55 Identifier <- <(([a-z] / [A-Z] / '_') ([a-z] / [A-Z] / [0-9] / '_')* _)> */
+		/* 55 DocComment <- <('/' '/' '/' (!EOL .)* (EOL / !.))> */
 		func() bool {
-			position279, tokenIndex279 := position, tokenIndex
+			position273, tokenIndex273 := position, tokenIndex
 			{
-				position280 := position
+				position274 := position
+				if buffer[position] != rune('/') {
+					goto l273
+				}
+				position++
+				if buffer[position] != rune('/') {
+					goto l273
+				}
+				position++
+				if buffer[position] != rune('/') {
+					goto l273
+				}
+				position++
+			l275:
 				{
-					position281, tokenIndex281 := position, tokenIndex
-					if c := buffer[position]; c < rune('a') || c > rune('z') {
-						goto l282
+					position276, tokenIndex276 := position, tokenIndex
+					{
+						position277, tokenIndex277 := position, tokenIndex
+						if !_rules[ruleEOL]() {
+							goto l277
+						}
+						goto l276
+					l277:
+						position, tokenIndex = position277, tokenIndex277
 					}
-					position++
-					goto l281
-				l282:
-					position, tokenIndex = position281, tokenIndex281
-					if c := buffer[position]; c < rune('A') || c > rune('Z') {
-						goto l283
+					if !matchDot() {
+						goto l276
 					}
-					position++
-					goto l281
-				l283:
-					position, tokenIndex = position281, tokenIndex281
-					if buffer[position] != rune('_') {
+					goto l275
+				l276:
+					position, tokenIndex = position276, tokenIndex276
+				}
+				{
+					position278, tokenIndex278 := position, tokenIndex
+					if !_rules[ruleEOL]() {
 						goto l279
 					}
-					position++
-				}
-			l281:
-			l284:
-				{
-					position285, tokenIndex285 := position, tokenIndex
+					goto l278
+				l279:
+					position, tokenIndex = position278, tokenIndex278
 					{
-						position286, tokenIndex286 := position, tokenIndex
+						position280, tokenIndex280 := position, tokenIndex
+						if !matchDot() {
+							goto l280
+						}
+						goto l273
+					l280:
+						position, tokenIndex = position280, tokenIndex280
+					}
+				}
+			l278:
+				add(ruleDocComment, position274)
+			}
+			return true
+		l273:
+			position, tokenIndex = position273, tokenIndex273
+			return false
+		},
+		/* 56 Identifier <- <(<(([a-z] / [A-Z] / '_') ([a-z] / [A-Z] / [0-9] / '_')*)> _ Action13)> */
+		func() bool {
+			position281, tokenIndex281 := position, tokenIndex
+			{
+				position282 := position
+				{
+					position283 := position
+					{
+						position284, tokenIndex284 := position, tokenIndex
 						if c := buffer[position]; c < rune('a') || c > rune('z') {
-							goto l287
-						}
-						position++
-						goto l286
-					l287:
-						position, tokenIndex = position286, tokenIndex286
-						if c := buffer[position]; c < rune('A') || c > rune('Z') {
-							goto l288
-						}
-						position++
-						goto l286
-					l288:
-						position, tokenIndex = position286, tokenIndex286
-						if c := buffer[position]; c < rune('0') || c > rune('9') {
-							goto l289
-						}
-						position++
-						goto l286
-					l289:
-						position, tokenIndex = position286, tokenIndex286
-						if buffer[position] != rune('_') {
 							goto l285
 						}
 						position++
-					}
-				l286:
-					goto l284
-				l285:
-					position, tokenIndex = position285, tokenIndex285
-				}
-				if !_rules[rule_]() {
-					goto l279
-				}
-				add(ruleIdentifier, position280)
-			}
-			return true
-		l279:
-			position, tokenIndex = position279, tokenIndex279
-			return false
-		},
-		/* 56 String <- <('"' (!'"' .)* '"' _)> */
-		func() bool {
-			position290, tokenIndex290 := position, tokenIndex
-			{
-				position291 := position
-				if buffer[position] != rune('"') {
-					goto l290
-				}
-				position++
-			l292:
-				{
-					position293, tokenIndex293 := position, tokenIndex
-					{
-						position294, tokenIndex294 := position, tokenIndex
-						if buffer[position] != rune('"') {
-							goto l294
+						goto l284
+					l285:
+						position, tokenIndex = position284, tokenIndex284
+						if c := buffer[position]; c < rune('A') || c > rune('Z') {
+							goto l286
 						}
 						position++
-						goto l293
-					l294:
-						position, tokenIndex = position294, tokenIndex294
+						goto l284
+					l286:
+						position, tokenIndex = position284, tokenIndex284
+						if buffer[position] != rune('_') {
+							goto l281
+						}
+						position++
 					}
-					if !matchDot() {
-						goto l293
+				l284:
+				l287:
+					{
+						position288, tokenIndex288 := position, tokenIndex
+						{
+							position289, tokenIndex289 := position, tokenIndex
+							if c := buffer[position]; c < rune('a') || c > rune('z') {
+								goto l290
+							}
+							position++
+							goto l289
+						l290:
+							position, tokenIndex = position289, tokenIndex289
+							if c := buffer[position]; c < rune('A') || c > rune('Z') {
+								goto l291
+							}
+							position++
+							goto l289
+						l291:
+							position, tokenIndex = position289, tokenIndex289
+							if c := buffer[position]; c < rune('0') || c > rune('9') {
+								goto l292
+							}
+							position++
+							goto l289
+						l292:
+							position, tokenIndex = position289, tokenIndex289
+							if buffer[position] != rune('_') {
+								goto l288
+							}
+							position++
+						}
+					l289:
+						goto l287
+					l288:
+						position, tokenIndex = position288, tokenIndex288
 					}
-					goto l292
-				l293:
-					position, tokenIndex = position293, tokenIndex293
+					add(rulePegText, position283)
 				}
-				if buffer[position] != rune('"') {
-					goto l290
-				}
-				position++
 				if !_rules[rule_]() {
-					goto l290
+					goto l281
 				}
-				add(ruleString, position291)
+				if !_rules[ruleAction13]() {
+					goto l281
+				}
+				add(ruleIdentifier, position282)
 			}
 			return true
-		l290:
-			position, tokenIndex = position290, tokenIndex290
+		l281:
+			position, tokenIndex = position281, tokenIndex281
 			return false
 		},
-		/* 57 Number <- <('-'? [0-9]+ ('.' [0-9]+)? _)> */
+		/* 57 String <- <(<('"' (!'"' .)* '"')> _ Action14)> */
 		func() bool {
-			position295, tokenIndex295 := position, tokenIndex
+			position293, tokenIndex293 := position, tokenIndex
 			{
-				position296 := position
+				position294 := position
 				{
-					position297, tokenIndex297 := position, tokenIndex
-					if buffer[position] != rune('-') {
-						goto l297
+					position295 := position
+					if buffer[position] != rune('"') {
+						goto l293
 					}
 					position++
-					goto l298
-				l297:
-					position, tokenIndex = position297, tokenIndex297
-				}
-			l298:
-				if c := buffer[position]; c < rune('0') || c > rune('9') {
-					goto l295
-				}
-				position++
-			l299:
-				{
-					position300, tokenIndex300 := position, tokenIndex
-					if c := buffer[position]; c < rune('0') || c > rune('9') {
-						goto l300
-					}
-					position++
-					goto l299
-				l300:
-					position, tokenIndex = position300, tokenIndex300
-				}
-				{
-					position301, tokenIndex301 := position, tokenIndex
-					if buffer[position] != rune('.') {
-						goto l301
-					}
-					position++
-					if c := buffer[position]; c < rune('0') || c > rune('9') {
-						goto l301
-					}
-					position++
-				l303:
+				l296:
 					{
-						position304, tokenIndex304 := position, tokenIndex
-						if c := buffer[position]; c < rune('0') || c > rune('9') {
-							goto l304
+						position297, tokenIndex297 := position, tokenIndex
+						{
+							position298, tokenIndex298 := position, tokenIndex
+							if buffer[position] != rune('"') {
+								goto l298
+							}
+							position++
+							goto l297
+						l298:
+							position, tokenIndex = position298, tokenIndex298
+						}
+						if !matchDot() {
+							goto l297
+						}
+						goto l296
+					l297:
+						position, tokenIndex = position297, tokenIndex297
+					}
+					if buffer[position] != rune('"') {
+						goto l293
+					}
+					position++
+					add(rulePegText, position295)
+				}
+				if !_rules[rule_]() {
+					goto l293
+				}
+				if !_rules[ruleAction14]() {
+					goto l293
+				}
+				add(ruleString, position294)
+			}
+			return true
+		l293:
+			position, tokenIndex = position293, tokenIndex293
+			return false
+		},
+		/* 58 Number <- <(<('-'? [0-9]+ ('.' [0-9]+)?)> _ Action15)> */
+		func() bool {
+			position299, tokenIndex299 := position, tokenIndex
+			{
+				position300 := position
+				{
+					position301 := position
+					{
+						position302, tokenIndex302 := position, tokenIndex
+						if buffer[position] != rune('-') {
+							goto l302
 						}
 						position++
 						goto l303
-					l304:
-						position, tokenIndex = position304, tokenIndex304
+					l302:
+						position, tokenIndex = position302, tokenIndex302
 					}
-					goto l302
-				l301:
-					position, tokenIndex = position301, tokenIndex301
+				l303:
+					if c := buffer[position]; c < rune('0') || c > rune('9') {
+						goto l299
+					}
+					position++
+				l304:
+					{
+						position305, tokenIndex305 := position, tokenIndex
+						if c := buffer[position]; c < rune('0') || c > rune('9') {
+							goto l305
+						}
+						position++
+						goto l304
+					l305:
+						position, tokenIndex = position305, tokenIndex305
+					}
+					{
+						position306, tokenIndex306 := position, tokenIndex
+						if buffer[position] != rune('.') {
+							goto l306
+						}
+						position++
+						if c := buffer[position]; c < rune('0') || c > rune('9') {
+							goto l306
+						}
+						position++
+					l308:
+						{
+							position309, tokenIndex309 := position, tokenIndex
+							if c := buffer[position]; c < rune('0') || c > rune('9') {
+								goto l309
+							}
+							position++
+							goto l308
+						l309:
+							position, tokenIndex = position309, tokenIndex309
+						}
+						goto l307
+					l306:
+						position, tokenIndex = position306, tokenIndex306
+					}
+				l307:
+					add(rulePegText, position301)
 				}
-			l302:
 				if !_rules[rule_]() {
-					goto l295
+					goto l299
 				}
-				add(ruleNumber, position296)
+				if !_rules[ruleAction15]() {
+					goto l299
+				}
+				add(ruleNumber, position300)
 			}
 			return true
-		l295:
-			position, tokenIndex = position295, tokenIndex295
+		l299:
+			position, tokenIndex = position299, tokenIndex299
 			return false
 		},
-		/* 58 Boolean <- <((('t' 'r' 'u' 'e') / ('f' 'a' 'l' 's' 'e')) _)> */
+		/* 59 Boolean <- <(<(('t' 'r' 'u' 'e') / ('f' 'a' 'l' 's' 'e'))> _ Action16)> */
 		func() bool {
-			position305, tokenIndex305 := position, tokenIndex
+			position310, tokenIndex310 := position, tokenIndex
 			{
-				position306 := position
+				position311 := position
 				{
-					position307, tokenIndex307 := position, tokenIndex
-					if buffer[position] != rune('t') {
-						goto l308
+					position312 := position
+					{
+						position313, tokenIndex313 := position, tokenIndex
+						if buffer[position] != rune('t') {
+							goto l314
+						}
+						position++
+						if buffer[position] != rune('r') {
+							goto l314
+						}
+						position++
+						if buffer[position] != rune('u') {
+							goto l314
+						}
+						position++
+						if buffer[position] != rune('e') {
+							goto l314
+						}
+						position++
+						goto l313
+					l314:
+						position, tokenIndex = position313, tokenIndex313
+						if buffer[position] != rune('f') {
+							goto l310
+						}
+						position++
+						if buffer[position] != rune('a') {
+							goto l310
+						}
+						position++
+						if buffer[position] != rune('l') {
+							goto l310
+						}
+						position++
+						if buffer[position] != rune('s') {
+							goto l310
+						}
+						position++
+						if buffer[position] != rune('e') {
+							goto l310
+						}
+						position++
 					}
-					position++
-					if buffer[position] != rune('r') {
-						goto l308
-					}
-					position++
-					if buffer[position] != rune('u') {
-						goto l308
-					}
-					position++
-					if buffer[position] != rune('e') {
-						goto l308
-					}
-					position++
-					goto l307
-				l308:
-					position, tokenIndex = position307, tokenIndex307
-					if buffer[position] != rune('f') {
-						goto l305
-					}
-					position++
-					if buffer[position] != rune('a') {
-						goto l305
-					}
-					position++
-					if buffer[position] != rune('l') {
-						goto l305
-					}
-					position++
-					if buffer[position] != rune('s') {
-						goto l305
-					}
-					position++
-					if buffer[position] != rune('e') {
-						goto l305
-					}
-					position++
+				l313:
+					add(rulePegText, position312)
 				}
-			l307:
 				if !_rules[rule_]() {
-					goto l305
+					goto l310
 				}
-				add(ruleBoolean, position306)
+				if !_rules[ruleAction16]() {
+					goto l310
+				}
+				add(ruleBoolean, position311)
 			}
 			return true
-		l305:
-			position, tokenIndex = position305, tokenIndex305
+		l310:
+			position, tokenIndex = position310, tokenIndex310
 			return false
 		},
-		/* 59 LBRACE <- <('{' _)> */
-		func() bool {
-			position309, tokenIndex309 := position, tokenIndex
-			{
-				position310 := position
-				if buffer[position] != rune('{') {
-					goto l309
-				}
-				position++
-				if !_rules[rule_]() {
-					goto l309
-				}
-				add(ruleLBRACE, position310)
-			}
-			return true
-		l309:
-			position, tokenIndex = position309, tokenIndex309
-			return false
-		},
-		/* 60 RBRACE <- <('}' _)> */
-		func() bool {
-			position311, tokenIndex311 := position, tokenIndex
-			{
-				position312 := position
-				if buffer[position] != rune('}') {
-					goto l311
-				}
-				position++
-				if !_rules[rule_]() {
-					goto l311
-				}
-				add(ruleRBRACE, position312)
-			}
-			return true
-		l311:
-			position, tokenIndex = position311, tokenIndex311
-			return false
-		},
-		/* 61 LBRACKET <- <('[' _)> */
-		func() bool {
-			position313, tokenIndex313 := position, tokenIndex
-			{
-				position314 := position
-				if buffer[position] != rune('[') {
-					goto l313
-				}
-				position++
-				if !_rules[rule_]() {
-					goto l313
-				}
-				add(ruleLBRACKET, position314)
-			}
-			return true
-		l313:
-			position, tokenIndex = position313, tokenIndex313
-			return false
-		},
-		/* 62 RBRACKET <- <(']' _)> */
+		/* 60 LBRACE <- <('{' _)> */
 		func() bool {
 			position315, tokenIndex315 := position, tokenIndex
 			{
 				position316 := position
-				if buffer[position] != rune(']') {
+				if buffer[position] != rune('{') {
 					goto l315
 				}
 				position++
 				if !_rules[rule_]() {
 					goto l315
 				}
-				add(ruleRBRACKET, position316)
+				add(ruleLBRACE, position316)
 			}
 			return true
 		l315:
 			position, tokenIndex = position315, tokenIndex315
 			return false
 		},
-		/* 63 LPAREN <- <('(' _)> */
+		/* 61 RBRACE <- <('}' _)> */
 		func() bool {
 			position317, tokenIndex317 := position, tokenIndex
 			{
 				position318 := position
-				if buffer[position] != rune('(') {
+				if buffer[position] != rune('}') {
 					goto l317
 				}
 				position++
 				if !_rules[rule_]() {
 					goto l317
 				}
-				add(ruleLPAREN, position318)
+				add(ruleRBRACE, position318)
 			}
 			return true
 		l317:
 			position, tokenIndex = position317, tokenIndex317
 			return false
 		},
-		/* 64 RPAREN <- <(')' _)> */
+		/* 62 LBRACKET <- <('[' _)> */
 		func() bool {
 			position319, tokenIndex319 := position, tokenIndex
 			{
 				position320 := position
-				if buffer[position] != rune(')') {
+				if buffer[position] != rune('[') {
 					goto l319
 				}
 				position++
 				if !_rules[rule_]() {
 					goto l319
 				}
-				add(ruleRPAREN, position320)
+				add(ruleLBRACKET, position320)
 			}
 			return true
 		l319:
 			position, tokenIndex = position319, tokenIndex319
 			return false
 		},
-		/* 65 COMMA <- <(',' _)> */
+		/* 63 RBRACKET <- <(']' _)> */
 		func() bool {
 			position321, tokenIndex321 := position, tokenIndex
 			{
 				position322 := position
-				if buffer[position] != rune(',') {
+				if buffer[position] != rune(']') {
 					goto l321
 				}
 				position++
 				if !_rules[rule_]() {
 					goto l321
 				}
-				add(ruleCOMMA, position322)
+				add(ruleRBRACKET, position322)
 			}
 			return true
 		l321:
 			position, tokenIndex = position321, tokenIndex321
 			return false
 		},
-		/* 66 COLON <- <(':' _)> */
+		/* 64 LPAREN <- <('(' _)> */
 		func() bool {
 			position323, tokenIndex323 := position, tokenIndex
 			{
 				position324 := position
-				if buffer[position] != rune(':') {
+				if buffer[position] != rune('(') {
 					goto l323
 				}
 				position++
 				if !_rules[rule_]() {
 					goto l323
 				}
-				add(ruleCOLON, position324)
+				add(ruleLPAREN, position324)
 			}
 			return true
 		l323:
 			position, tokenIndex = position323, tokenIndex323
 			return false
 		},
-		/* 67 SEMICOLON <- <(';' _)> */
-		nil,
-		/* 68 EQUALS <- <('=' _)> */
+		/* 65 RPAREN <- <(')' _)> */
 		func() bool {
-			position326, tokenIndex326 := position, tokenIndex
+			position325, tokenIndex325 := position, tokenIndex
 			{
-				position327 := position
+				position326 := position
+				if buffer[position] != rune(')') {
+					goto l325
+				}
+				position++
+				if !_rules[rule_]() {
+					goto l325
+				}
+				add(ruleRPAREN, position326)
+			}
+			return true
+		l325:
+			position, tokenIndex = position325, tokenIndex325
+			return false
+		},
+		/* 66 COMMA <- <(',' _)> */
+		func() bool {
+			position327, tokenIndex327 := position, tokenIndex
+			{
+				position328 := position
+				if buffer[position] != rune(',') {
+					goto l327
+				}
+				position++
+				if !_rules[rule_]() {
+					goto l327
+				}
+				add(ruleCOMMA, position328)
+			}
+			return true
+		l327:
+			position, tokenIndex = position327, tokenIndex327
+			return false
+		},
+		/* 67 COLON <- <(':' _)> */
+		func() bool {
+			position329, tokenIndex329 := position, tokenIndex
+			{
+				position330 := position
+				if buffer[position] != rune(':') {
+					goto l329
+				}
+				position++
+				if !_rules[rule_]() {
+					goto l329
+				}
+				add(ruleCOLON, position330)
+			}
+			return true
+		l329:
+			position, tokenIndex = position329, tokenIndex329
+			return false
+		},
+		/* 68 SEMICOLON <- <(';' _)> */
+		nil,
+		/* 69 EQUALS <- <('=' _)> */
+		func() bool {
+			position332, tokenIndex332 := position, tokenIndex
+			{
+				position333 := position
 				if buffer[position] != rune('=') {
-					goto l326
+					goto l332
 				}
 				position++
 				if !_rules[rule_]() {
-					goto l326
+					goto l332
 				}
-				add(ruleEQUALS, position327)
+				add(ruleEQUALS, position333)
 			}
 			return true
-		l326:
-			position, tokenIndex = position326, tokenIndex326
+		l332:
+			position, tokenIndex = position332, tokenIndex332
 			return false
 		},
-		/* 69 PIPE <- <('|' _)> */
+		/* 70 PIPE <- <('|' _)> */
 		func() bool {
-			position328, tokenIndex328 := position, tokenIndex
+			position334, tokenIndex334 := position, tokenIndex
 			{
-				position329 := position
+				position335 := position
 				if buffer[position] != rune('|') {
-					goto l328
+					goto l334
 				}
 				position++
 				if !_rules[rule_]() {
-					goto l328
+					goto l334
 				}
-				add(rulePIPE, position329)
+				add(rulePIPE, position335)
 			}
 			return true
-		l328:
-			position, tokenIndex = position328, tokenIndex328
+		l334:
+			position, tokenIndex = position334, tokenIndex334
 			return false
 		},
-		/* 70 DOT <- <('.' _)> */
+		/* 71 DOT <- <('.' _)> */
 		nil,
-		/* 71 SPREAD <- <('.' '.' '.' _)> */
-		func() bool {
-			position331, tokenIndex331 := position, tokenIndex
-			{
-				position332 := position
-				if buffer[position] != rune('.') {
-					goto l331
-				}
-				position++
-				if buffer[position] != rune('.') {
-					goto l331
-				}
-				position++
-				if buffer[position] != rune('.') {
-					goto l331
-				}
-				position++
-				if !_rules[rule_]() {
-					goto l331
-				}
-				add(ruleSPREAD, position332)
-			}
-			return true
-		l331:
-			position, tokenIndex = position331, tokenIndex331
-			return false
-		},
-		/* 72 AT <- <('@' _)> */
-		func() bool {
-			position333, tokenIndex333 := position, tokenIndex
-			{
-				position334 := position
-				if buffer[position] != rune('@') {
-					goto l333
-				}
-				position++
-				if !_rules[rule_]() {
-					goto l333
-				}
-				add(ruleAT, position334)
-			}
-			return true
-		l333:
-			position, tokenIndex = position333, tokenIndex333
-			return false
-		},
-		/* 73 LT <- <('<' _)> */
-		func() bool {
-			position335, tokenIndex335 := position, tokenIndex
-			{
-				position336 := position
-				if buffer[position] != rune('<') {
-					goto l335
-				}
-				position++
-				if !_rules[rule_]() {
-					goto l335
-				}
-				add(ruleLT, position336)
-			}
-			return true
-		l335:
-			position, tokenIndex = position335, tokenIndex335
-			return false
-		},
-		/* 74 RT <- <('>' _)> */
+		/* 72 SPREAD <- <('.' '.' '.' _)> */
 		func() bool {
 			position337, tokenIndex337 := position, tokenIndex
 			{
 				position338 := position
-				if buffer[position] != rune('>') {
+				if buffer[position] != rune('.') {
+					goto l337
+				}
+				position++
+				if buffer[position] != rune('.') {
+					goto l337
+				}
+				position++
+				if buffer[position] != rune('.') {
 					goto l337
 				}
 				position++
 				if !_rules[rule_]() {
 					goto l337
 				}
-				add(ruleRT, position338)
+				add(ruleSPREAD, position338)
 			}
 			return true
 		l337:
 			position, tokenIndex = position337, tokenIndex337
 			return false
 		},
-		/* 75 DOTDOT <- <('.' '.' _)> */
+		/* 73 AT <- <('@' _)> */
 		func() bool {
 			position339, tokenIndex339 := position, tokenIndex
 			{
 				position340 := position
-				if buffer[position] != rune('.') {
-					goto l339
-				}
-				position++
-				if buffer[position] != rune('.') {
+				if buffer[position] != rune('@') {
 					goto l339
 				}
 				position++
 				if !_rules[rule_]() {
 					goto l339
 				}
-				add(ruleDOTDOT, position340)
+				add(ruleAT, position340)
 			}
 			return true
 		l339:
 			position, tokenIndex = position339, tokenIndex339
 			return false
 		},
-		/* 76 QUESTION <- <('?' _)> */
+		/* 74 LT <- <('<' _)> */
 		func() bool {
 			position341, tokenIndex341 := position, tokenIndex
 			{
 				position342 := position
-				if buffer[position] != rune('?') {
+				if buffer[position] != rune('<') {
 					goto l341
 				}
 				position++
 				if !_rules[rule_]() {
 					goto l341
 				}
-				add(ruleQUESTION, position342)
+				add(ruleLT, position342)
 			}
 			return true
 		l341:
 			position, tokenIndex = position341, tokenIndex341
 			return false
 		},
-		/* 77 DoubleColon <- <(':' ':' _)> */
+		/* 75 RT <- <('>' _)> */
 		func() bool {
 			position343, tokenIndex343 := position, tokenIndex
 			{
 				position344 := position
-				if buffer[position] != rune(':') {
-					goto l343
-				}
-				position++
-				if buffer[position] != rune(':') {
+				if buffer[position] != rune('>') {
 					goto l343
 				}
 				position++
 				if !_rules[rule_]() {
 					goto l343
 				}
-				add(ruleDoubleColon, position344)
+				add(ruleRT, position344)
 			}
 			return true
 		l343:
 			position, tokenIndex = position343, tokenIndex343
 			return false
 		},
-		/* 78 SingleColon <- <(':' _)> */
+		/* 76 DOTDOT <- <('.' '.' _)> */
+		func() bool {
+			position345, tokenIndex345 := position, tokenIndex
+			{
+				position346 := position
+				if buffer[position] != rune('.') {
+					goto l345
+				}
+				position++
+				if buffer[position] != rune('.') {
+					goto l345
+				}
+				position++
+				if !_rules[rule_]() {
+					goto l345
+				}
+				add(ruleDOTDOT, position346)
+			}
+			return true
+		l345:
+			position, tokenIndex = position345, tokenIndex345
+			return false
+		},
+		/* 77 QUESTION <- <('?' _)> */
+		func() bool {
+			position347, tokenIndex347 := position, tokenIndex
+			{
+				position348 := position
+				if buffer[position] != rune('?') {
+					goto l347
+				}
+				position++
+				if !_rules[rule_]() {
+					goto l347
+				}
+				add(ruleQUESTION, position348)
+			}
+			return true
+		l347:
+			position, tokenIndex = position347, tokenIndex347
+			return false
+		},
+		/* 78 DoubleColon <- <(':' ':' _)> */
+		func() bool {
+			position349, tokenIndex349 := position, tokenIndex
+			{
+				position350 := position
+				if buffer[position] != rune(':') {
+					goto l349
+				}
+				position++
+				if buffer[position] != rune(':') {
+					goto l349
+				}
+				position++
+				if !_rules[rule_]() {
+					goto l349
+				}
+				add(ruleDoubleColon, position350)
+			}
+			return true
+		l349:
+			position, tokenIndex = position349, tokenIndex349
+			return false
+		},
+		/* 79 SingleColon <- <(':' _)> */
 		nil,
-		/* 79 _ <- <(' ' / '\t' / '\r' / '\n' / Comment / DocComment)*> */
+		/* 80 _ <- <(' ' / '\t' / '\r' / '\n' / Comment / DocComment)*> */
 		func() bool {
 			{
-				position347 := position
-			l348:
+				position353 := position
+			l354:
 				{
-					position349, tokenIndex349 := position, tokenIndex
+					position355, tokenIndex355 := position, tokenIndex
 					{
-						position350, tokenIndex350 := position, tokenIndex
+						position356, tokenIndex356 := position, tokenIndex
 						if buffer[position] != rune(' ') {
-							goto l351
+							goto l357
 						}
 						position++
-						goto l350
-					l351:
-						position, tokenIndex = position350, tokenIndex350
+						goto l356
+					l357:
+						position, tokenIndex = position356, tokenIndex356
 						if buffer[position] != rune('\t') {
-							goto l352
+							goto l358
 						}
 						position++
-						goto l350
-					l352:
-						position, tokenIndex = position350, tokenIndex350
+						goto l356
+					l358:
+						position, tokenIndex = position356, tokenIndex356
 						if buffer[position] != rune('\r') {
-							goto l353
+							goto l359
 						}
 						position++
-						goto l350
-					l353:
-						position, tokenIndex = position350, tokenIndex350
+						goto l356
+					l359:
+						position, tokenIndex = position356, tokenIndex356
 						if buffer[position] != rune('\n') {
-							goto l354
+							goto l360
 						}
 						position++
-						goto l350
-					l354:
-						position, tokenIndex = position350, tokenIndex350
+						goto l356
+					l360:
+						position, tokenIndex = position356, tokenIndex356
 						if !_rules[ruleComment]() {
+							goto l361
+						}
+						goto l356
+					l361:
+						position, tokenIndex = position356, tokenIndex356
+						if !_rules[ruleDocComment]() {
 							goto l355
 						}
-						goto l350
-					l355:
-						position, tokenIndex = position350, tokenIndex350
-						if !_rules[ruleDocComment]() {
-							goto l349
-						}
 					}
-				l350:
-					goto l348
-				l349:
-					position, tokenIndex = position349, tokenIndex349
+				l356:
+					goto l354
+				l355:
+					position, tokenIndex = position355, tokenIndex355
 				}
-				add(rule_, position347)
+				add(rule_, position353)
 			}
 			return true
 		},
-		/* 80 EOL <- <(('\r' '\n') / '\n' / '\r')> */
+		/* 81 EOL <- <(('\r' '\n') / '\n' / '\r')> */
 		func() bool {
-			position356, tokenIndex356 := position, tokenIndex
+			position362, tokenIndex362 := position, tokenIndex
 			{
-				position357 := position
+				position363 := position
 				{
-					position358, tokenIndex358 := position, tokenIndex
+					position364, tokenIndex364 := position, tokenIndex
 					if buffer[position] != rune('\r') {
-						goto l359
+						goto l365
 					}
 					position++
 					if buffer[position] != rune('\n') {
-						goto l359
+						goto l365
 					}
 					position++
-					goto l358
-				l359:
-					position, tokenIndex = position358, tokenIndex358
+					goto l364
+				l365:
+					position, tokenIndex = position364, tokenIndex364
 					if buffer[position] != rune('\n') {
-						goto l360
+						goto l366
 					}
 					position++
-					goto l358
-				l360:
-					position, tokenIndex = position358, tokenIndex358
+					goto l364
+				l366:
+					position, tokenIndex = position364, tokenIndex364
 					if buffer[position] != rune('\r') {
-						goto l356
+						goto l362
 					}
 					position++
 				}
-			l358:
-				add(ruleEOL, position357)
+			l364:
+				add(ruleEOL, position363)
 			}
 			return true
-		l356:
-			position, tokenIndex = position356, tokenIndex356
+		l362:
+			position, tokenIndex = position362, tokenIndex362
 			return false
+		},
+		/* 83 Action0 <- <{ p.Init() }> */
+		func() bool {
+			{
+				add(ruleAction0, position)
+			}
+			return true
+		},
+		/* 84 Action1 <- <{ p.PrintDebug() }> */
+		func() bool {
+			{
+				add(ruleAction1, position)
+			}
+			return true
+		},
+		/* 85 Action2 <- <{ p.PopPathAndAddUseStatement() }> */
+		func() bool {
+			{
+				add(ruleAction2, position)
+			}
+			return true
+		},
+		/* 86 Action3 <- <{ p.BuildPathFromSegments(true) }> */
+		func() bool {
+			{
+				add(ruleAction3, position)
+			}
+			return true
+		},
+		/* 87 Action4 <- <{ p.BuildPathFromSegments(false) }> */
+		func() bool {
+			{
+				add(ruleAction4, position)
+			}
+			return true
+		},
+		/* 88 Action5 <- <{ p.PushSuperKeyword() }> */
+		func() bool {
+			{
+				add(ruleAction5, position)
+			}
+			return true
+		},
+		/* 89 Action6 <- <{ p.BeginStruct() }> */
+		func() bool {
+			{
+				add(ruleAction6, position)
+			}
+			return true
+		},
+		/* 90 Action7 <- <{ p.EndStruct() }> */
+		func() bool {
+			{
+				add(ruleAction7, position)
+			}
+			return true
+		},
+		/* 91 Action8 <- <{ p.PopStructAndAddStatement() }> */
+		func() bool {
+			{
+				add(ruleAction8, position)
+			}
+			return true
+		},
+		/* 92 Action9 <- <{ p.BeginField() }> */
+		func() bool {
+			{
+				add(ruleAction9, position)
+			}
+			return true
+		},
+		/* 93 Action10 <- <{ p.EndField() }> */
+		func() bool {
+			{
+				add(ruleAction10, position)
+			}
+			return true
+		},
+		/* 94 Action11 <- <{ p.AddFieldColon() }> */
+		func() bool {
+			{
+				add(ruleAction11, position)
+			}
+			return true
+		},
+		/* 95 Action12 <- <{ p.MarkFieldOptional() }> */
+		func() bool {
+			{
+				add(ruleAction12, position)
+			}
+			return true
+		},
+		nil,
+		/* 97 Action13 <- <{ p.PushIdentifier(buffer[begin:end]) }> */
+		func() bool {
+			{
+				add(ruleAction13, position)
+			}
+			return true
+		},
+		/* 98 Action14 <- <{ p.PushString(buffer[begin:end]) }> */
+		func() bool {
+			{
+				add(ruleAction14, position)
+			}
+			return true
+		},
+		/* 99 Action15 <- <{ p.PushNumber(buffer[begin:end]) }> */
+		func() bool {
+			{
+				add(ruleAction15, position)
+			}
+			return true
+		},
+		/* 100 Action16 <- <{ p.PushBoolean(buffer[begin:end]) }> */
+		func() bool {
+			{
+				add(ruleAction16, position)
+			}
+			return true
 		},
 	}
 	p.rules = _rules
