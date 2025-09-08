@@ -10,7 +10,7 @@ export class LegacyValidator extends BaseValidator {
   private validator: JsonValidator | null = null;
   private parser: McdocParser | null = null;
 
-  async initialize(schemaPath: string): Promise<void> {
+  async initialize(schemaPath: string, datpackPath?: string): Promise<void> {
     if (this.verbose) {
       console.log('📁 Loading mcdoc schemas...');
     }

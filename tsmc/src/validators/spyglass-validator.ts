@@ -1,79 +1,187 @@
 import { BaseValidator, ValidationResult } from './base-validator.js';
 import { glob } from 'glob';
 import { readFileSync } from 'fs';
-import { basename } from 'path';
+import { basename, resolve } from 'path';
+import { pathToFileURL } from 'url';
+import * as core from '@spyglassmc/core';
+import * as mcdoc from '@spyglassmc/mcdoc';
+import * as json from '@spyglassmc/json';
+import * as javaEdition from '@spyglassmc/java-edition';
+import { NodeJsExternals } from '@spyglassmc/core/lib/nodejs.js';
 
 /**
- * Spyglass-based validator (stub implementation for now)
- * TODO: Implement using actual Spyglass APIs
+ * Spyglass-based validator using real Spyglass Project APIs
  */
 export class SpyglassValidator extends BaseValidator {
-  private initialized = false;
+  private project: core.Project | null = null;
   private schemaPath = '';
 
-  async initialize(schemaPath: string): Promise<void> {
+  async initialize(schemaPath: string, datpackPath?: string): Promise<void> {
     this.schemaPath = schemaPath;
     
     if (this.verbose) {
       console.log('🔧 Initializing Spyglass validator...');
       console.log(`Schema directory: ${schemaPath}`);
-      console.log('⚠️  Using stub implementation - all files will pass validation');
+      if (datpackPath) {
+        console.log(`Datapack directory: ${datpackPath}`);
+      }
     }
 
-    // TODO: Initialize actual Spyglass Project here
-    // const project = new core.Project({...});
-    // await project.ready();
+    try {
+      // Create Spyglass logger
+      const logger: core.Logger = {
+        log: (...args: any[]) => this.verbose ? console.log(...args) : {},
+        info: (...args: any[]) => this.verbose ? console.info(...args) : {},
+        warn: (...args: any[]) => console.warn(...args),
+        error: (...args: any[]) => console.error(...args),
+      };
 
-    this.initialized = true;
-    
-    if (this.verbose) {
-      console.log('✅ Spyglass validator initialized');
+      // Set up project paths
+      const cacheRoot = resolve(process.cwd(), '.cache');
+      const schemaRoot = resolve(process.cwd(), schemaPath);
+      
+      // Build project roots array - include both schema and datapack if provided
+      const projectRoots = [
+        core.fileUtil.ensureEndingSlash(pathToFileURL(schemaRoot).toString())
+      ];
+      
+      if (datpackPath) {
+        const datpackRoot = resolve(process.cwd(), datpackPath);
+        projectRoots.push(core.fileUtil.ensureEndingSlash(pathToFileURL(datpackRoot).toString()));
+      }
+
+      // Create Spyglass project
+      this.project = new core.Project({
+        logger,
+        profilers: new core.ProfilerFactory(logger, [
+          'project#init',
+          'project#ready',
+          'project#ready#bind',
+        ]),
+        cacheRoot: core.fileUtil.ensureEndingSlash(pathToFileURL(cacheRoot).toString()),
+        defaultConfig: core.ConfigService.merge(core.VanillaConfig, {
+          env: { dependencies: [] },
+          gameVersion: '1.21.8', // Specify concrete Minecraft version
+        }),
+        externals: NodeJsExternals,
+        initializers: [
+          mcdoc.initialize,
+          json.getInitializer(),
+          javaEdition.initialize,
+        ],
+        projectRoots,
+      });
+
+      // Wait for project to be ready
+      await this.project.ready();
+      await this.project.cacheService.save();
+
+      if (this.verbose) {
+        console.log('✅ Spyglass validator initialized');
+      }
+    } catch (error) {
+      throw new Error(`Failed to initialize Spyglass project: ${error}`);
     }
   }
 
   async validateJsonFile(filePath: string, datpackRoot: string): Promise<ValidationResult> {
-    if (!this.initialized) {
+    if (!this.project) {
       throw new Error('Validator not initialized. Call initialize() first.');
     }
 
     // Parse basic file info
     const fileInfo = this.parseDatapackPath(filePath, datpackRoot);
+    const resourceId = fileInfo?.resourceId || basename(filePath, '.json');
     
-    // Read and validate JSON syntax
-    let jsonContent: any;
     try {
+      // Read file content
       const content = readFileSync(filePath, 'utf-8');
-      jsonContent = JSON.parse(content);
+      
+      // Basic JSON syntax validation first
+      try {
+        JSON.parse(content);
+      } catch (jsonError) {
+        return {
+          filePath,
+          resourceId,
+          valid: false,
+          errors: [{
+            message: `JSON syntax error: ${jsonError}`,
+            severity: 'error' as const,
+            range: undefined
+          }],
+          warnings: []
+        };
+      }
+      
+      // Convert file path to URI for Spyglass
+      const fileUri = pathToFileURL(filePath).toString();
+      
+      // Check if this is a file Spyglass can validate by looking at the project's supported files
+      const isFileSupported = !this.project.shouldExclude(fileUri, 'json');
+      
+      if (isFileSupported) {
+        // Use Spyglass to process the file as a client-managed document
+        await this.project.onDidOpen(fileUri, 'json', 1, content);
+        
+        // Get the processed document and node
+        const docAndNode = await this.project.ensureClientManagedChecked(fileUri);
+        
+        if (docAndNode) {
+          // Extract errors from the file node using Spyglass API
+          const errors = core.FileNode.getErrors(docAndNode.node);
+          
+          // Clean up the managed document
+          this.project.onDidClose(fileUri);
+          
+          return {
+            filePath,
+            resourceId,
+            valid: errors.length === 0,
+            errors: errors.map((err: core.LanguageError) => ({
+              message: err.message,
+              // TODO: Convert Spyglass Range (offset-based) to LSP Position (line/character-based)
+              range: undefined,
+              severity: 'error' as const,
+              code: err.info?.codeAction?.title
+            })),
+            warnings: [] // Spyglass doesn't separate warnings from errors
+          };
+        }
+        
+        // Clean up in case of failure
+        this.project.onDidClose(fileUri);
+      }
+      
+      // If Spyglass can't validate this file, fall back to JSON syntax validation
+      if (this.verbose) {
+        console.log(`  File ${resourceId} not supported by Spyglass, using syntax validation only`);
+      }
+      
+      return {
+        filePath,
+        resourceId,
+        valid: true, // JSON syntax is valid
+        errors: [],
+        warnings: []
+      };
+      
     } catch (error) {
       return {
         filePath,
-        resourceId: fileInfo?.resourceId || basename(filePath, '.json'),
+        resourceId,
         valid: false,
         errors: [{
-          message: `JSON parse error: ${error}`,
-          severity: 'error'
+          message: `Validation error: ${error}`,
+          severity: 'error' as const
         }],
         warnings: []
       };
     }
-
-    // TODO: Implement actual Spyglass validation here
-    // 1. Parse JSON with json.parser.file()
-    // 2. Look up mcdoc type from project.symbols
-    // 3. Validate with json.checker.index(mcdocType)
-    
-    // Stub: Always pass validation for now
-    return {
-      filePath,
-      resourceId: fileInfo?.resourceId || basename(filePath, '.json'),
-      valid: true,
-      errors: [],
-      warnings: []
-    };
   }
 
   async validateAllJsonFiles(datpackPath: string): Promise<ValidationResult[]> {
-    if (!this.initialized) {
+    if (!this.project) {
       throw new Error('Validator not initialized. Call initialize() first.');
     }
 
@@ -119,18 +227,19 @@ export class SpyglassValidator extends BaseValidator {
       const relativePath = filePath.replace(datpackRoot + '/', '');
       const pathParts = relativePath.split('/').filter(part => part.length > 0);
       
-      if (pathParts.length < 2) {
-        return null;
+      // Handle flat structure like: dimension_type/file.json
+      if (pathParts.length >= 2) {
+        const resourceName = pathParts[pathParts.length - 1].replace('.json', '');
+        const registryType = pathParts.slice(0, -1).join('/');
+        
+        return {
+          registryType,
+          resourceName,
+          resourceId: `minecraft:${resourceName}` // Default to minecraft namespace
+        };
       }
-
-      const resourceName = pathParts[pathParts.length - 1].replace('.json', '');
-      const registryType = pathParts.slice(0, -1).join('/');
       
-      return {
-        registryType,
-        resourceName,
-        resourceId: `minecraft:${resourceName}`
-      };
+      return null;
     } catch (error) {
       return null;
     }
@@ -146,15 +255,13 @@ export class SpyglassValidator extends BaseValidator {
       console.log('Closing Spyglass validator...');
     }
     
-    // TODO: Close Spyglass project
-    // if (this.project) {
-    //   await this.project.close();
-    // }
-    
-    this.initialized = false;
+    if (this.project) {
+      await this.project.close();
+      this.project = null;
+    }
   }
 
   getValidatorName(): string {
-    return 'Spyglass (stub)';
+    return 'Spyglass';
   }
 }

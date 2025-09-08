@@ -39,9 +39,9 @@ export abstract class BaseValidator {
   }
 
   /**
-   * Initialize the validator with schema path
+   * Initialize the validator with schema path and optional datapack path
    */
-  abstract initialize(schemaPath: string): Promise<void>;
+  abstract initialize(schemaPath: string, datpackPath?: string): Promise<void>;
 
   /**
    * Validate a single JSON file

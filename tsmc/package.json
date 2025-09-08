@@ -13,16 +13,23 @@
     "start": "node dist/index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": ["minecraft", "datapack", "validation", "mcdoc", "cli"],
+  "keywords": [
+    "minecraft",
+    "datapack",
+    "validation",
+    "mcdoc",
+    "cli"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
     "@spyglassmc/core": "^0.4.32",
-    "@spyglassmc/mcdoc": "^0.3.36",
     "@spyglassmc/java-edition": "^0.3.43",
     "@spyglassmc/json": "^0.3.36",
+    "@spyglassmc/mcdoc": "^0.3.36",
     "commander": "^11.1.0",
-    "glob": "^10.3.10"
+    "glob": "^10.3.10",
+    "vscode-languageserver-textdocument": "^1.0.12"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

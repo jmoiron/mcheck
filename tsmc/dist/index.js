@@ -115,7 +115,7 @@ program
         // Create and initialize validator
         const validator = createValidator(validatorType, options.verbose);
         try {
-            await validator.initialize(schemaPath);
+            await validator.initialize(schemaPath, datpackPath);
             if (options.verbose) {
                 console.log(`\n🔎 Validating JSON files using ${validator.getValidatorName()} validator...`);
             }
