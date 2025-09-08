@@ -165,6 +165,16 @@ tsmc parse-schemas --verbose
 tsmc --schema-path ./custom/schemas info
 ```
 
+## Updating Schemas
+
+To get the latest vanilla mcdoc schemas from Spyglass, you can download them from:
+
+```
+https://api.spyglassmc.com/vanilla-mcdoc/tarball
+```
+
+Extract the tarball contents to update your schema files in the `java/` directory (or your custom schema directory).
+
 ## Dependencies
 
 The tool uses the following key dependencies:

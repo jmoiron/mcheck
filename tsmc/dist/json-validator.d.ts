@@ -19,6 +19,7 @@ export interface ValidationError {
 export declare class JsonValidator {
     private pathMapper;
     private schemas;
+    private typeGraph;
     private verbose;
     constructor(parsedSchemas: ParsedMcdocFile[], verbose?: boolean);
     /**
@@ -34,7 +35,11 @@ export declare class JsonValidator {
      */
     validateAllJsonFiles(datpackPath: string): Promise<JsonValidationResult[]>;
     /**
-     * Perform basic validation (placeholder for full mcdoc validation)
+     * Perform validation using the type graph
+     */
+    private performTypeGraphValidation;
+    /**
+     * Perform basic validation (fallback for specific types)
      */
     private performBasicValidation;
     /**
@@ -45,6 +50,14 @@ export declare class JsonValidator {
      * Validate a noise settings structure
      */
     private validateNoiseSettings;
+    /**
+     * Get debug information about the type system
+     */
+    getTypeGraphDebugInfo(): {
+        totalTypes: number;
+        registryMappings: Record<string, string>;
+        typesByFile: Record<string, string[]>;
+    };
     /**
      * Generate a validation report
      */

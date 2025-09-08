@@ -2,7 +2,7 @@
 import { Command } from 'commander';
 import { McdocLoader } from './mcdoc-loader.js';
 import { McdocParser } from './mcdoc-parser.js';
-import { JsonValidator } from './json-validator.js';
+import { createValidator, getAvailableValidators, getDefaultValidator } from './validators/index.js';
 const program = new Command();
 program
     .name('tsmc')
@@ -94,90 +94,99 @@ program
     .option('-d, --datapack <path>', 'Path to datapack directory', './worldgen')
     .option('-v, --verbose', 'Enable verbose output with detailed validation results')
     .option('--file <path>', 'Validate a single file instead of entire directory')
+    .option('--validator <type>', `Validator to use (${getAvailableValidators().join(', ')})`, getDefaultValidator())
     .action(async (options, command) => {
     try {
         const schemaPath = command.parent?.opts().schemaPath || './java';
         const datpackPath = options.datapack || './worldgen';
+        const validatorType = options.validator;
+        // Validate validator type
+        if (!getAvailableValidators().includes(validatorType)) {
+            console.error(`❌ Invalid validator type: ${validatorType}`);
+            console.error(`Available validators: ${getAvailableValidators().join(', ')}`);
+            process.exit(1);
+        }
         if (options.verbose) {
             console.log('🔍 Starting JSON validation...');
             console.log(`Schema directory: ${schemaPath}`);
             console.log(`Datapack directory: ${datpackPath}`);
+            console.log(`Validator: ${validatorType}`);
         }
-        // Load and parse schemas first
-        if (options.verbose) {
-            console.log('\n📁 Loading mcdoc schemas...');
-        }
-        const loader = new McdocLoader(schemaPath, options.verbose);
-        const mcdocFiles = await loader.loadAllMcdocFiles();
-        if (mcdocFiles.length === 0) {
-            console.error('❌ No mcdoc schema files found!');
-            process.exit(1);
-        }
-        if (options.verbose) {
-            console.log('\n⚡ Parsing mcdoc schemas...');
-        }
-        const parser = new McdocParser(options.verbose);
-        const parsedSchemas = await parser.parseAllMcdocFiles(mcdocFiles);
-        const schemaReport = parser.getParsingReport(parsedSchemas);
-        if (schemaReport.totalErrors > 0) {
-            console.error(`Schema parsing failed with ${schemaReport.totalErrors} errors`);
+        // Create and initialize validator
+        const validator = createValidator(validatorType, options.verbose);
+        try {
+            await validator.initialize(schemaPath);
             if (options.verbose) {
-                // Show schema parsing errors in verbose mode
-                const report = parser.getParsingReport(parsedSchemas);
-                for (const detail of report.errorDetails) {
-                    console.error(`${detail.file}:`);
-                    for (const error of detail.errors) {
-                        console.error(`  - ${error.message || error}`);
+                console.log(`\n🔎 Validating JSON files using ${validator.getValidatorName()} validator...`);
+            }
+            let validationResults;
+            if (options.file) {
+                if (options.verbose) {
+                    console.log(`Validating single file: ${options.file}`);
+                }
+                const result = await validator.validateJsonFile(options.file, datpackPath);
+                validationResults = [result];
+            }
+            else {
+                validationResults = await validator.validateAllJsonFiles(datpackPath);
+            }
+            // Generate report
+            const report = validator.generateReport(validationResults);
+            // Unix-like behavior: only show failures, silent on success
+            if (report.totalErrors === 0) {
+                // Silent success - no output for valid files
+                if (options.verbose) {
+                    console.log(`\n✅ All files are valid! (${report.totalFiles} files checked)`);
+                    if (report.totalWarnings > 0) {
+                        console.log(`⚠️  ${report.totalWarnings} warnings found`);
                     }
                 }
             }
-            process.exit(1);
-        }
-        if (options.verbose) {
-            console.log(`✅ All ${schemaReport.totalFiles} schemas parsed successfully`);
-            console.log('\n🔎 Validating JSON files...');
-        }
-        // Validate JSON files
-        const validator = new JsonValidator(parsedSchemas, options.verbose);
-        let validationResults;
-        if (options.file) {
-            if (options.verbose) {
-                console.log(`Validating single file: ${options.file}`);
-            }
-            const result = await validator.validateJsonFile(options.file, datpackPath);
-            validationResults = [result];
-        }
-        else {
-            validationResults = await validator.validateAllJsonFiles(datpackPath);
-        }
-        // Generate report
-        const report = validator.generateReport(validationResults);
-        // Unix-like behavior: only show failures, silent on success
-        if (report.totalErrors === 0) {
-            // Silent success - no output for valid files
-            if (options.verbose) {
-                console.log('\n✅ All files are valid!');
-            }
-        }
-        else {
-            // Show only the failed files and their errors
-            for (const result of validationResults) {
-                if (!result.valid) {
-                    const filePath = result.fileInfo.resourceId || result.filePath;
-                    console.log(`${filePath}:`);
-                    for (const error of result.errors) {
-                        console.log(`  ${error.message}`);
+            else {
+                // Show only the failed files and their errors
+                for (const result of validationResults) {
+                    if (!result.valid) {
+                        console.log(`${result.resourceId}:`);
+                        for (const error of result.errors) {
+                            if (error.range) {
+                                console.log(`  ${error.message} (line ${error.range.start.line + 1})`);
+                            }
+                            else {
+                                console.log(`  ${error.message}`);
+                            }
+                        }
                     }
                 }
+                if (options.verbose) {
+                    console.log(`\n📊 Validation Summary:`);
+                    console.log(`  Total files: ${report.totalFiles}`);
+                    console.log(`  Valid files: ${report.validFiles}`);
+                    console.log(`  Invalid files: ${report.invalidFiles}`);
+                    console.log(`  Total errors: ${report.totalErrors}`);
+                    console.log(`  Total warnings: ${report.totalWarnings}`);
+                }
+                process.exit(1);
             }
-            process.exit(1);
         }
-        // Clean up
-        await parser.close();
+        finally {
+            // Clean up
+            await validator.close();
+        }
     }
     catch (error) {
         console.error('❌ Error:', error);
         process.exit(1);
+    }
+});
+program
+    .command('list-validators')
+    .description('List available validators')
+    .action(() => {
+    console.log('Available validators:');
+    for (const validatorType of getAvailableValidators()) {
+        const isDefault = validatorType === getDefaultValidator();
+        const marker = isDefault ? ' (default)' : '';
+        console.log(`  - ${validatorType}${marker}`);
     }
 });
 program.parse();

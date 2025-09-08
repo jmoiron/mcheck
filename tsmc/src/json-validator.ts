@@ -4,6 +4,7 @@ import * as core from '@spyglassmc/core';
 import type { ParsedMcdocFile } from './mcdoc-parser.js';
 import type { DatapackFileInfo } from './path-mapper.js';
 import { DatapackPathMapper } from './path-mapper.js';
+import { TypeGraph } from './type-graph.js';
 
 export interface JsonValidationResult {
   filePath: string;
@@ -26,11 +27,13 @@ export interface ValidationError {
 export class JsonValidator {
   private pathMapper: DatapackPathMapper;
   private schemas: Map<string, ParsedMcdocFile> = new Map();
+  private typeGraph: TypeGraph;
   private verbose: boolean;
 
   constructor(parsedSchemas: ParsedMcdocFile[], verbose: boolean = false) {
     this.pathMapper = new DatapackPathMapper();
     this.verbose = verbose;
+    this.typeGraph = new TypeGraph(parsedSchemas);
     
     // Index schemas for quick lookup
     for (const schema of parsedSchemas) {
@@ -89,8 +92,8 @@ export class JsonValidator {
       };
     }
 
-    // Find the appropriate schema
-    const expectedType = this.pathMapper.getExpectedTypeName(fileInfo.registryType);
+    // Find the appropriate schema using the type graph
+    const expectedType = this.typeGraph.getExpectedTypeName(fileInfo.registryType);
     if (!expectedType) {
       return {
         filePath,
@@ -106,9 +109,8 @@ export class JsonValidator {
       };
     }
 
-    // For now, we'll do basic structural validation
-    // TODO: Implement full mcdoc-based validation using the parsed AST
-    const validationResult = this.performBasicValidation(jsonContent, fileInfo, expectedType);
+    // Use type graph for validation
+    const validationResult = this.performTypeGraphValidation(jsonContent, fileInfo, expectedType);
 
     return {
       filePath,
@@ -171,7 +173,45 @@ export class JsonValidator {
   }
 
   /**
-   * Perform basic validation (placeholder for full mcdoc validation)
+   * Perform validation using the type graph
+   */
+  private performTypeGraphValidation(jsonContent: any, fileInfo: DatapackFileInfo, expectedType: string): {
+    valid: boolean;
+    errors: ValidationError[];
+    warnings: ValidationError[];
+  } {
+    const warnings: ValidationError[] = [];
+    
+    // Use type graph to validate
+    const validationResult = this.typeGraph.isValidForType(jsonContent, expectedType);
+    
+    const errors: ValidationError[] = validationResult.errors.map(error => ({
+      message: error,
+      severity: 'error' as const
+    }));
+
+    // Add specific validation for known types
+    if (expectedType === 'Biome' && validationResult.valid) {
+      const biomeValidation = this.validateBiome(jsonContent);
+      errors.push(...biomeValidation.errors);
+      warnings.push(...biomeValidation.warnings);
+    }
+
+    if (expectedType === 'NoiseSettings' && validationResult.valid) {
+      const noiseValidation = this.validateNoiseSettings(jsonContent);
+      errors.push(...noiseValidation.errors);
+      warnings.push(...noiseValidation.warnings);
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors,
+      warnings
+    };
+  }
+
+  /**
+   * Perform basic validation (fallback for specific types)
    */
   private performBasicValidation(jsonContent: any, fileInfo: DatapackFileInfo, expectedType: string): {
     valid: boolean;
@@ -466,6 +506,13 @@ export class JsonValidator {
       errors,
       warnings
     };
+  }
+
+  /**
+   * Get debug information about the type system
+   */
+  getTypeGraphDebugInfo() {
+    return this.typeGraph.getDebugInfo();
   }
 
   /**
