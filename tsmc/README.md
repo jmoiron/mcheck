@@ -4,6 +4,22 @@ A command-line tool for validating Minecraft datapack JSON files against mcdoc s
 
 ## Installation
 
+### Global Installation
+
+To install `tsmc` as a global command:
+
+```bash
+npm install
+npm run build
+npm install -g .
+```
+
+After installation, you can run `tsmc` from anywhere on your system.
+
+### Development Installation
+
+For local development:
+
 ```bash
 npm install
 npm run build
