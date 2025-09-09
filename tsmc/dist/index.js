@@ -8,7 +8,7 @@ program
     .name('tsmc')
     .description('TypeScript Minecraft datapack validator using mcdoc schemas')
     .version('1.0.0')
-    .option('--schema-path <path>', 'Path to schema directory', './java');
+    .option('--schema-path <path>', 'Path to schema directory', './schema');
 program
     .command('parse-schemas')
     .description('Parse and validate all mcdoc schema files')
@@ -146,7 +146,8 @@ program
                 // Show only the failed files and their errors
                 for (const result of validationResults) {
                     if (!result.valid) {
-                        console.log(`${result.resourceId}:`);
+                        const displayPath = result.filePath.replace(process.cwd() + '/', '');
+                        console.log(`${displayPath}:`);
                         for (const error of result.errors) {
                             if (error.range) {
                                 console.log(`  ${error.message} (line ${error.range.start.line + 1})`);

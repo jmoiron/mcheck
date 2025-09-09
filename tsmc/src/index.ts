@@ -11,7 +11,7 @@ program
   .name('tsmc')
   .description('TypeScript Minecraft datapack validator using mcdoc schemas')
   .version('1.0.0')
-  .option('--schema-path <path>', 'Path to schema directory', './java');
+  .option('--schema-path <path>', 'Path to schema directory', './schema');
 
 program
   .command('parse-schemas')
@@ -112,6 +112,7 @@ program
   .option('-v, --verbose', 'Enable verbose output with detailed validation results')
   .option('--file <path>', 'Validate a single file instead of entire directory')
   .option('--validator <type>', `Validator to use (${getAvailableValidators().join(', ')})`, getDefaultValidator())
+  .option('--ignore-undeclared-symbols', 'Ignore undeclaredSymbol errors when using the spyglass validator')
   .action(async (options, command) => {
     try {
       const schemaPath = command.parent?.opts().schemaPath || './java';
@@ -170,7 +171,8 @@ program
           // Show only the failed files and their errors
           for (const result of validationResults) {
             if (!result.valid) {
-              console.log(`${result.resourceId}:`);
+              const displayPath = result.filePath.replace(process.cwd() + '/', '');
+              console.log(`${displayPath}:`);
               for (const error of result.errors) {
                 if (error.range) {
                   console.log(`  ${error.message} (line ${error.range.start.line + 1})`);

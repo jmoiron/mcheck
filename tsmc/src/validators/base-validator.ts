@@ -28,14 +28,21 @@ export interface ValidationReport {
   byRegistryType?: Record<string, { total: number; valid: number; invalid: number }>;
 }
 
+export interface ValidatorOptions {
+  verbose?: boolean;
+  ignoreUndeclaredSymbols?: boolean;
+}
+
 /**
  * Abstract base class for all validators
  */
 export abstract class BaseValidator {
   protected verbose: boolean;
+  protected options: ValidatorOptions;
   
-  constructor(verbose: boolean = false) {
-    this.verbose = verbose;
+  constructor(options: ValidatorOptions = {}) {
+    this.verbose = options.verbose || false;
+    this.options = options;
   }
 
   /**
