@@ -133,18 +133,36 @@ export class SpyglassValidator extends BaseValidator {
                     const errors = core.FileNode.getErrors(docAndNode.node);
                     // Clean up the managed document
                     this.project.onDidClose(fileUri);
+                    // Process errors based on options
+                    const processedErrors = [];
+                    const processedWarnings = [];
+                    for (const err of errors) {
+                        const isUndeclaredSymbol = this.isUndeclaredSymbolError(err);
+                        if (this.options.ignoreUndeclaredSymbols && isUndeclaredSymbol) {
+                            // Convert undeclaredSymbol errors to warnings
+                            processedWarnings.push({
+                                message: this.enhanceErrorMessage(err, content),
+                                range: undefined,
+                                severity: 'warning',
+                                code: err.info?.codeAction?.title
+                            });
+                        }
+                        else {
+                            // Keep as error
+                            processedErrors.push({
+                                message: this.enhanceErrorMessage(err, content),
+                                range: undefined,
+                                severity: 'error',
+                                code: err.info?.codeAction?.title
+                            });
+                        }
+                    }
                     return {
                         filePath,
                         resourceId,
-                        valid: errors.length === 0,
-                        errors: errors.map((err) => ({
-                            message: this.enhanceErrorMessage(err, content),
-                            // TODO: Convert Spyglass Range (offset-based) to LSP Position (line/character-based)
-                            range: undefined,
-                            severity: 'error',
-                            code: err.info?.codeAction?.title
-                        })),
-                        warnings: [] // Spyglass doesn't separate warnings from errors
+                        valid: processedErrors.length === 0,
+                        errors: processedErrors,
+                        warnings: processedWarnings
                     };
                 }
                 // Clean up in case of failure
@@ -233,6 +251,14 @@ export class SpyglassValidator extends BaseValidator {
     extractRegistryType(resourceId) {
         // TODO: Extract from actual validation context
         return 'unknown';
+    }
+    /**
+     * Check if an error is an undeclaredSymbol error that should be handled specially
+     */
+    isUndeclaredSymbolError(error) {
+        const message = error.message;
+        // Spyglass uses "(rule: undeclaredSymbol)" in error messages for undeclared symbol errors
+        return message.includes('(rule: undeclaredSymbol)');
     }
     /**
      * Enhance error messages from Spyglass to provide more context

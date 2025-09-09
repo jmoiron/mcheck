@@ -3,8 +3,10 @@
  */
 export class BaseValidator {
     verbose;
-    constructor(verbose = false) {
-        this.verbose = verbose;
+    options;
+    constructor(options = {}) {
+        this.verbose = options.verbose || false;
+        this.options = options;
     }
     /**
      * Generate a validation report from results

@@ -35,12 +35,17 @@ export interface ValidationReport {
         invalid: number;
     }>;
 }
+export interface ValidatorOptions {
+    verbose?: boolean;
+    ignoreUndeclaredSymbols?: boolean;
+}
 /**
  * Abstract base class for all validators
  */
 export declare abstract class BaseValidator {
     protected verbose: boolean;
-    constructor(verbose?: boolean);
+    protected options: ValidatorOptions;
+    constructor(options?: ValidatorOptions);
     /**
      * Initialize the validator with schema path and optional datapack path
      */

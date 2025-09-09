@@ -95,6 +95,7 @@ program
     .option('-v, --verbose', 'Enable verbose output with detailed validation results')
     .option('--file <path>', 'Validate a single file instead of entire directory')
     .option('--validator <type>', `Validator to use (${getAvailableValidators().join(', ')})`, getDefaultValidator())
+    .option('--ignore-undeclared-symbols', 'Ignore undeclaredSymbol errors when using the spyglass validator')
     .action(async (options, command) => {
     try {
         const schemaPath = command.parent?.opts().schemaPath || './java';
@@ -113,7 +114,11 @@ program
             console.log(`Validator: ${validatorType}`);
         }
         // Create and initialize validator
-        const validator = createValidator(validatorType, options.verbose);
+        const validatorOptions = {
+            verbose: options.verbose,
+            ignoreUndeclaredSymbols: options.ignoreUndeclaredSymbols
+        };
+        const validator = createValidator(validatorType, validatorOptions);
         try {
             await validator.initialize(schemaPath, datpackPath);
             if (options.verbose) {

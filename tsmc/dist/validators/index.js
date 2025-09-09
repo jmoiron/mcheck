@@ -6,15 +6,21 @@ export * from './spyglass-validator.js';
 /**
  * Factory function to create validators
  */
-export function createValidator(type, verbose = false) {
+export function createValidator(type, options = {}) {
     switch (type) {
         case 'legacy':
-            return new LegacyValidator(verbose);
+            return new LegacyValidator(options);
         case 'spyglass':
-            return new SpyglassValidator(verbose);
+            return new SpyglassValidator(options);
         default:
             throw new Error(`Unknown validator type: ${type}`);
     }
+}
+/**
+ * Legacy function for backward compatibility
+ */
+export function createValidatorWithVerbose(type, verbose = false) {
+    return createValidator(type, { verbose });
 }
 /**
  * Get list of available validator types

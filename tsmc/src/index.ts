@@ -134,7 +134,11 @@ program
       }
 
       // Create and initialize validator
-      const validator = createValidator(validatorType, options.verbose);
+      const validatorOptions = {
+        verbose: options.verbose,
+        ignoreUndeclaredSymbols: options.ignoreUndeclaredSymbols
+      };
+      const validator = createValidator(validatorType, validatorOptions);
       
       try {
         await validator.initialize(schemaPath, datpackPath);

@@ -1,4 +1,4 @@
-import { BaseValidator, ValidationResult } from './base-validator.js';
+import { BaseValidator, ValidationResult, ValidationError } from './base-validator.js';
 import { glob } from 'glob';
 import { readFileSync } from 'fs';
 import { basename, resolve } from 'path';
@@ -154,18 +154,38 @@ export class SpyglassValidator extends BaseValidator {
           // Clean up the managed document
           this.project.onDidClose(fileUri);
           
+          // Process errors based on options
+          const processedErrors: ValidationError[] = [];
+          const processedWarnings: ValidationError[] = [];
+          
+          for (const err of errors) {
+            const isUndeclaredSymbol = this.isUndeclaredSymbolError(err);
+            
+            if (this.options.ignoreUndeclaredSymbols && isUndeclaredSymbol) {
+              // Convert undeclaredSymbol errors to warnings
+              processedWarnings.push({
+                message: this.enhanceErrorMessage(err, content),
+                range: undefined,
+                severity: 'warning' as const,
+                code: err.info?.codeAction?.title
+              });
+            } else {
+              // Keep as error
+              processedErrors.push({
+                message: this.enhanceErrorMessage(err, content),
+                range: undefined,
+                severity: 'error' as const,
+                code: err.info?.codeAction?.title
+              });
+            }
+          }
+          
           return {
             filePath,
             resourceId,
-            valid: errors.length === 0,
-            errors: errors.map((err: core.LanguageError) => ({
-              message: this.enhanceErrorMessage(err, content),
-              // TODO: Convert Spyglass Range (offset-based) to LSP Position (line/character-based)
-              range: undefined,
-              severity: 'error' as const,
-              code: err.info?.codeAction?.title
-            })),
-            warnings: [] // Spyglass doesn't separate warnings from errors
+            valid: processedErrors.length === 0,
+            errors: processedErrors,
+            warnings: processedWarnings
           };
         }
         
@@ -269,6 +289,16 @@ export class SpyglassValidator extends BaseValidator {
   protected extractRegistryType(resourceId: string): string | null {
     // TODO: Extract from actual validation context
     return 'unknown';
+  }
+
+  /**
+   * Check if an error is an undeclaredSymbol error that should be handled specially
+   */
+  private isUndeclaredSymbolError(error: core.LanguageError): boolean {
+    const message = error.message;
+    
+    // Spyglass uses "(rule: undeclaredSymbol)" in error messages for undeclared symbol errors
+    return message.includes('(rule: undeclaredSymbol)');
   }
 
   /**

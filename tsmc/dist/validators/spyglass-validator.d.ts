@@ -14,6 +14,10 @@ export declare class SpyglassValidator extends BaseValidator {
     private parseDatapackPath;
     protected extractRegistryType(resourceId: string): string | null;
     /**
+     * Check if an error is an undeclaredSymbol error that should be handled specially
+     */
+    private isUndeclaredSymbolError;
+    /**
      * Enhance error messages from Spyglass to provide more context
      */
     private enhanceErrorMessage;

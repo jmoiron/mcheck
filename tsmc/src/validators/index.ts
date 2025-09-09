@@ -1,4 +1,4 @@
-import { BaseValidator } from './base-validator.js';
+import { BaseValidator, ValidatorOptions } from './base-validator.js';
 import { LegacyValidator } from './legacy-validator.js';
 import { SpyglassValidator } from './spyglass-validator.js';
 
@@ -11,15 +11,22 @@ export type ValidatorType = 'legacy' | 'spyglass';
 /**
  * Factory function to create validators
  */
-export function createValidator(type: ValidatorType, verbose: boolean = false): BaseValidator {
+export function createValidator(type: ValidatorType, options: ValidatorOptions = {}): BaseValidator {
   switch (type) {
     case 'legacy':
-      return new LegacyValidator(verbose);
+      return new LegacyValidator(options);
     case 'spyglass':
-      return new SpyglassValidator(verbose);
+      return new SpyglassValidator(options);
     default:
       throw new Error(`Unknown validator type: ${type}`);
   }
+}
+
+/**
+ * Legacy function for backward compatibility
+ */
+export function createValidatorWithVerbose(type: ValidatorType, verbose: boolean = false): BaseValidator {
+  return createValidator(type, { verbose });
 }
 
 /**
